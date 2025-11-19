@@ -2,7 +2,24 @@
 프롬프트 빌더 모듈
 AI2 담당
 """
+import pathlib
 from typing import Dict, List
+
+PROMPT_DIR = pathlib.Path(__file__).parent / "prompts"
+
+
+def load_prompt(name: str) -> str:
+    """
+    프롬프트 파일을 로드합니다.
+    
+    Args:
+        name: 프롬프트 파일명 (확장자 제외)
+        
+    Returns:
+        프롬프트 텍스트
+    """
+    file_path = PROMPT_DIR / f"{name}.txt"
+    return file_path.read_text(encoding="utf-8")
 
 
 def build_title_prompt(keyword: str, product_info: str = "") -> str:
@@ -16,21 +33,8 @@ def build_title_prompt(keyword: str, product_info: str = "") -> str:
     Returns:
         제목 생성 프롬프트
     """
-    prompt = f"""
-다음 키워드를 기반으로 SEO 최적화되고 호기심을 유발하는 블로그 제목을 생성하세요.
-
-키워드: {keyword}
-상품 정보: {product_info}
-
-요구사항:
-- 감정어 포함 (미친 듯, 갑자기, 왜 등)
-- 숫자/통계 활용 가능
-- 30자 이내
-- 광고 느낌 최소화
-
-제목 3개를 생성해주세요.
-"""
-    return prompt.strip()
+    template = load_prompt("title_prompt")
+    return template.format(keyword=keyword, product_info=product_info)
 
 
 def build_outline_prompt(keyword: str, title: str, product_info: str = "") -> str:
@@ -45,21 +49,8 @@ def build_outline_prompt(keyword: str, title: str, product_info: str = "") -> st
     Returns:
         아웃라인 생성 프롬프트
     """
-    prompt = f"""
-다음 정보를 바탕으로 블로그 글의 아웃라인을 생성하세요.
-
-제목: {title}
-키워드: {keyword}
-상품 정보: {product_info}
-
-요구사항:
-- 5~7개 섹션으로 구성
-- h2, h3 태그 구조 포함
-- 각 섹션별 간단한 설명 포함
-
-아웃라인을 JSON 형식으로 제공해주세요.
-"""
-    return prompt.strip()
+    template = load_prompt("outline_prompt")
+    return template.format(keyword=keyword, title=title, product_info=product_info)
 
 
 def build_body_prompt(keyword: str, title: str, outline: Dict, product_info: str = "") -> str:
@@ -69,28 +60,19 @@ def build_body_prompt(keyword: str, title: str, outline: Dict, product_info: str
     Args:
         keyword: 선택된 키워드
         title: 생성된 제목
-        outline: 생성된 아웃라인
+        outline: 생성된 아웃라인 (딕셔너리)
         product_info: 상품 정보 텍스트
         
     Returns:
         본문 생성 프롬프트
     """
-    prompt = f"""
-다음 정보를 바탕으로 자연스럽고 읽기 쉬운 블로그 본문을 생성하세요.
-
-제목: {title}
-키워드: {keyword}
-아웃라인: {outline}
-상품 정보: {product_info}
-
-요구사항:
-- 1,000~1,500자 분량
-- h2, h3 태그 포함
-- 자연스럽고 광고 느낌 없는 문체
-- SEO 최적화
-- 키워드 자연스럽게 배치
-
-HTML 형식으로 본문을 생성해주세요.
-"""
-    return prompt.strip()
+    template = load_prompt("content_prompt")
+    # outline이 딕셔너리인 경우 문자열로 변환
+    outline_str = str(outline) if isinstance(outline, dict) else outline
+    return template.format(
+        keyword=keyword,
+        title=title,
+        outline=outline_str,
+        product_info=product_info
+    )
 
