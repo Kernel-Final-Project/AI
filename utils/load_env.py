@@ -5,12 +5,6 @@ import os
 from dotenv import load_dotenv
 from pathlib import Path
 
-# 환경변수 자동 로드
-load_dotenv()
-
-# 주요 환경변수 변수로 직접 할당
-OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
-
 
 def load_environment():
     """
@@ -33,4 +27,8 @@ def get_env(key: str, default: str = None) -> str:
         환경변수 값
     """
     return os.getenv(key, default)
+
+
+# 환경변수 자동 로드
+load_environment()
 

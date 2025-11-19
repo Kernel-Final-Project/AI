@@ -185,18 +185,34 @@
 
 ## ④ 결과 저장 (storage/)
 
-### file_handler.py
-- JSON 형식으로 콘텐츠 저장
-- HTML 파일로도 저장 (미리보기용)
-- 파일명: `{날짜}_{키워드}.json`
+### data_storage.py
+- `data/` 루트 하위에 `trends/`, `products/`, `posts/`, `logs/` 디렉토리 자동 생성
+- 트렌드/상품/포스트/실행 로그 데이터를 공통 포맷(`{"metadata": {...}, "items": [...]}`)으로 저장
+- 파일명은 `trends_20251118_120000.json` 형태로 자동 생성 (필요 시 직접 지정 가능)
+- 메타데이터에 `count`, `saved_at`, `run_id`, `strategy`, `keyword` 등의 정보를 포함해 이력 관리
+- `keyword_history.json`으로 최근 선택 키워드 기록 관리 (기본 50개, `StorageConfig.keyword_history_limit`으로 조정 가능)
+- 히스토리 파일이 손상되면 자동으로 복구하며, 저장 시 최신 기록만 유지
+- `generate_run_id()`로 파이프라인 실행별 고유 ID 부여
+- `load_latest_trends()`, `load_latest_products()`, `load_latest_post()`, `load_recent_run_logs()`로 최근 저장 데이터를 손쉽게 조회
+
+### file_manager.py
+- JSON/HTML 저장 유틸리티
+- `data_storage`가 내부적으로 재사용
 
 ### db_handler.py (선택)
-- SQLite 또는 PostgreSQL에 저장
-- 스키마 설계 필요
+- SQLite 또는 PostgreSQL에 저장 (향후 필요 시 구현)
 
 ---
 
 ## ⑤ AI 스케줄러 (scheduler.py)
+
+- `scheduler/main_scheduler.py`에서 전체 파이프라인 실행
+- 08:00 실행을 기본값으로 하고 `SCHEDULE_TIME` 환경변수로 조정 가능
+- 1단계 트렌드 수집 시 `collect_and_store_trends()` 호출 → 결과가 즉시 `data/trends/`에 저장
+- 키워드 선택 시 `storage.load_keyword_history()`로 최근 사용 내역을 불러와 중복 선택을 방지하고, 선택 결과는 `save_run_log()`와 `save_keyword_history()`로 기록
+- `KEYWORD_SELECTION_WEIGHTED=true` 설정 시 트렌드 점수를 기반으로 가중치 랜덤을 적용해 인기 키워드 우선 선택 가능
+- 각 실행마다 `run_id`를 생성해 모든 저장/로그에 공통 메타데이터로 기록
+- ssadagu, 콘텐츠 생성, 블로그 업로드는 현재 스텁으로 연결되어 있으며 추후 실제 모듈을 바인딩 예정
 
 ### 기능
 - 매일 오전 10시에 자동 실행
@@ -214,4 +230,3 @@
 ### 로깅
 - 각 단계별 로그 기록
 - 에러 발생 시 알림 (선택)
-
