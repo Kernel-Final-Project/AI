@@ -53,6 +53,31 @@ def build_outline_prompt(keyword: str, title: str, product_info: str = "") -> st
     return template.format(keyword=keyword, title=title, product_info=product_info)
 
 
+def format_outline_for_prompt(outline: Dict) -> str:
+    """
+    아웃라인 딕셔너리를 읽기 쉬운 텍스트 형식으로 변환
+    
+    Args:
+        outline: 아웃라인 딕셔너리
+        
+    Returns:
+        포맷팅된 아웃라인 텍스트
+    """
+    if not outline or "h2" not in outline:
+        return "아웃라인 없음"
+    
+    lines = []
+    for h2_item in outline["h2"]:
+        h2_title = h2_item.get("title", "")
+        lines.append(f"h2: {h2_title}")
+        
+        h3_list = h2_item.get("h3", [])
+        for h3_title in h3_list:
+            lines.append(f"  h3: {h3_title}")
+    
+    return "\n".join(lines)
+
+
 def build_body_prompt(keyword: str, title: str, outline: Dict, product_info: str = "") -> str:
     """
     본문 생성용 프롬프트를 생성합니다.
@@ -67,12 +92,12 @@ def build_body_prompt(keyword: str, title: str, outline: Dict, product_info: str
         본문 생성 프롬프트
     """
     template = load_prompt("content_prompt")
-    # outline이 딕셔너리인 경우 문자열로 변환
-    outline_str = str(outline) if isinstance(outline, dict) else outline
+    # outline을 읽기 쉬운 형식으로 변환
+    outline_str = format_outline_for_prompt(outline) if isinstance(outline, dict) else str(outline)
     return template.format(
         keyword=keyword,
         title=title,
         outline=outline_str,
-        product_info=product_info
+        product_info=product_info if product_info else "없음"
     )
 
