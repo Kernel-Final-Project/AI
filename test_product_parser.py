@@ -74,6 +74,11 @@ def test_product_parsing_from_url(url: str):
             else:
                 print(f"💰 가격: ❌ 없음")
 
+            if product.product_code:
+                print(f"🔢 상품 코드: {product.product_code}")
+            else:
+                print(f"🔢 상품 코드: ❌ 없음")
+
             if product.image_url:
                 print(f"🖼️  이미지: {product.image_url}")
             else:
@@ -96,9 +101,11 @@ def test_product_parsing_from_url(url: str):
         image_count = sum(1 for p in products if p.image_url)
         link_count = sum(1 for p in products if p.product_url)
 
+        code_count = sum(1 for p in products if p.product_code)
         print(f"\n✅ 총 상품 수: {len(products)}개")
         print(f"\n📈 추출 성공률:")
         print(f"  💰 가격 정보: {price_count}개 ({price_count/len(products)*100:.1f}%)")
+        print(f"  🔢 상품 코드: {code_count}개 ({code_count/len(products)*100:.1f}%)")
         print(
             f"  🖼️  이미지 URL: {image_count}개 ({image_count/len(products)*100:.1f}%)"
         )
@@ -113,6 +120,7 @@ def test_product_parsing_from_url(url: str):
                     {
                         "title": p.title,
                         "price": p.price,
+                        "product_code": p.product_code,
                         "image_url": p.image_url,
                         "product_url": p.product_url,
                         "description": p.description,

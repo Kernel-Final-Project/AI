@@ -5,6 +5,12 @@
 from scraper.html_extractor import extract_html, load_html_ssr, load_html_csr
 from scraper.ssr_csr_checker import check_ssr_csr, CheckResult
 from scraper.product_parser import parse_products, Product
+from scraper.category_navigator import crawl_all_categories, detect_category_links, navigate_to_category
 
-__all__ = ['extract_html', 'load_html_ssr', 'load_html_csr', 'check_ssr_csr', 'CheckResult', 'parse_products', 'Product']
+__all__ = [
+    'extract_html', 'load_html_ssr', 'load_html_csr', 
+    'check_ssr_csr', 'CheckResult', 
+    'parse_products', 'Product',
+    'crawl_all_categories', 'detect_category_links', 'navigate_to_category'
+]
 

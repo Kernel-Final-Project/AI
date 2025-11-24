@@ -45,3 +45,4 @@ def extract_text(html: str, selector: Optional[str] = None) -> str:
     else:
         return soup.get_text(strip=True)
 
+

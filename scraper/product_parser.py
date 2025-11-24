@@ -17,6 +17,7 @@ class Product:
     price: str          # 가격
     image_url: str      # 이미지 URL
     product_url: str    # 상품 상세 링크
+    product_code: str = ""  # 상품 코드 (선택)
     description: str = ""  # 상품 설명 (선택)
 
 
@@ -465,6 +466,88 @@ def detect_product_url(element: Tag, base_url: str = "") -> str:
     return ""
 
 
+def detect_product_code(element: Tag) -> str:
+    """
+    상품 코드 자동 인식
+    
+    Args:
+        element: 상품 요소
+        
+    Returns:
+        상품 코드 문자열
+    """
+    # 우선순위 1: URL에서 상품 코드 추출 (가장 일반적)
+    links = element.find_all('a', href=True)
+    for link in links:
+        href = link.get('href', '')
+        if not href:
+            continue
+        
+        # 다양한 URL 패턴에서 상품 코드 추출
+        patterns = [
+            r'num_iid=(\d+)',          # 싸다구: num_iid=846537789890
+            r'product_id=(\d+)',       # product_id=12345
+            r'[?&]id=(\d+)',           # id=12345 (쿼리 파라미터)
+            r'item_id=(\d+)',         # item_id=12345
+            r'goods_id=(\d+)',        # goods_id=12345
+            r'/product/(\d+)',        # /product/12345
+            r'/item/(\d+)',           # /item/12345
+            r'g-(\d+)',                # Temu: g-601101921767940
+            r'goods-(\d+)',            # goods-12345
+            r'p-(\d+)',                # p-12345
+        ]
+        
+        for pattern in patterns:
+            match = re.search(pattern, href)
+            if match:
+                code = match.group(1)
+                # 숫자만 있는지 확인 (최소 3자리)
+                if code.isdigit() and len(code) >= 3:
+                    return code
+    
+    # 우선순위 2: hidden input에서 상품 코드 추출
+    hidden_inputs = element.find_all('input', {'type': 'hidden'})
+    for inp in hidden_inputs:
+        name = inp.get('name', '').lower()
+        value = inp.get('value', '')
+        
+        # 상품 코드 관련 필드명 확인
+        if any(keyword in name for keyword in ['id', 'code', 'sku', 'item', 'product', 'goods']):
+            # 숫자만 있는 값인지 확인
+            if value:
+                # 숫자만 추출
+                digits = re.findall(r'\d+', value)
+                if digits:
+                    # 가장 긴 숫자 선택 (상품 코드일 가능성)
+                    longest = max(digits, key=len)
+                    if len(longest) >= 3:
+                        return longest
+    
+    # 우선순위 3: data 속성에서 상품 코드 추출
+    for attr in element.attrs:
+        if any(keyword in attr.lower() for keyword in ['id', 'code', 'sku', 'product', 'item']):
+            value = element.get(attr, '')
+            if value:
+                # 숫자만 추출
+                digits = re.findall(r'\d+', str(value))
+                if digits:
+                    longest = max(digits, key=len)
+                    if len(longest) >= 3:
+                        return longest
+    
+    # 우선순위 4: 요소 ID에서 추출
+    elem_id = element.get('id', '')
+    if elem_id:
+        # ID에서 숫자 추출
+        digits = re.findall(r'\d+', elem_id)
+        if digits:
+            longest = max(digits, key=len)
+            if len(longest) >= 3:
+                return longest
+    
+    return ""
+
+
 def extract_product_info(element: Tag, base_url: str = "") -> Optional[Product]:
     """
     개별 상품 요소에서 정보 추출
@@ -480,6 +563,7 @@ def extract_product_info(element: Tag, base_url: str = "") -> Optional[Product]:
     price = detect_price(element)
     image_url = detect_image_url(element, base_url)
     product_url = detect_product_url(element, base_url)
+    product_code = detect_product_code(element)
     
     # 최소한 제목은 있어야 함
     if not title:
@@ -490,6 +574,7 @@ def extract_product_info(element: Tag, base_url: str = "") -> Optional[Product]:
         price=price,
         image_url=image_url,
         product_url=product_url or base_url,
+        product_code=product_code,
         description=""
     )
 
