@@ -52,7 +52,7 @@ class TistoryBlogAutomation:
         # 블로그 URL 설정
         blog_url = get_env('TISTORY_BLOG_URL','').rstrip('/')
         if not blog_url:
-            raise ValueError("TISTOR_BLOG_URL 환경변수가 설정되지 않았습니다.")
+            raise ValueError("TISTORY_BLOG_URL 환경변수가 설정되지 않았습니다.")
         self.blog_write_url = blog_url + "/manage/newpost/"
 
     # ------------------------ Utility ------------------------

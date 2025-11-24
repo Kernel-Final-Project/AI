@@ -23,12 +23,12 @@ def check_naver_env():
 
     naver_id = get_env('NAVER_ID')
     naver_pw = get_env('NAVER_PW')
-    blog_id = get_env('BLOG_ID')
+    blog_url = get_env('NAVER_BLOG_URL')
 
     checks = {
         'NAVER_ID': naver_id,
         'NAVER_PW': '***' if naver_pw else None,
-        'BLOG_ID': blog_id,
+        'BLOG_URL': blog_url,
     }
 
     all_ok = True

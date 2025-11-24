@@ -5,6 +5,7 @@ import time
 import random
 import platform
 from typing import Dict
+from urllib.parse import urlparse
 
 from selenium import webdriver
 from selenium.webdriver.common.by import By
@@ -77,10 +78,20 @@ class NaverBlogAutomation:
 
         naver_id = get_env("NAVER_ID")
         naver_pw = get_env('NAVER_PW')
-        blog_id = get_env('BLOG_ID')
+        blog_url = get_env('NAVER_BLOG_URL')
 
-        if not naver_id or not naver_pw or not blog_id:
-            raise ValueError("Naver_ID, NAVER_PW, blog_ID가 설정되지 않았습니다.")
+        if not naver_id or not naver_pw or not blog_url:
+            raise ValueError("NAVER_ID, NAVER_PW, NAVER_BLOG_URL이 설정되지 않았습니다.")
+
+        # URL에서 blog_id 추출 (현재는 사용하지 않지만 향후 확장용)
+        # 예: https://blog.naver.com/myblog123 -> myblog123
+        try:
+            parsed = urlparse(blog_url.rstrip('/'))
+            self.blog_id = parsed.path.strip('/')
+            logger.info(f"블로그 ID 추출: {self.blog_id}")
+        except Exception as e:
+            logger.warning(f"블로그 URL 파싱 실패 (무시): {e}")
+            self.blog_id = None
 
         driver.get("https://nid.naver.com/nidlogin.login")
         self.random_sleep(2, 3)
