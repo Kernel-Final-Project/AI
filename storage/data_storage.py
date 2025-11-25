@@ -7,11 +7,10 @@ import json
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Union
 
 from utils.file_manager import FileManager
 from utils.logger import logger
-from uuid import uuid4
 
 
 @dataclass(frozen=True)
@@ -22,11 +21,11 @@ class StorageConfig:
 
     base_dir: str = "data"
     trends_dir: str = "trends"
+    keywords_dir: str = "keywords"
     products_dir: str = "products"
     posts_dir: str = "posts"
     logs_dir: str = "logs"
     keyword_history_file: str = "keyword_history.json"
-    keyword_history_limit: int = 50
 
 
 class DataStorage:
@@ -46,6 +45,7 @@ class DataStorage:
         base_path = Path(self.file_manager.base_dir)
         for subdir in (
             self.config.trends_dir,
+            self.config.keywords_dir,
             self.config.products_dir,
             self.config.posts_dir,
             self.config.logs_dir,
@@ -58,8 +58,9 @@ class DataStorage:
     def generate_run_id(self) -> str:
         """
         파이프라인 실행 단위를 식별하기 위한 run_id를 생성합니다.
+        포맷: YYYYMMDD_HHMMSS
         """
-        return datetime.now(tz=timezone.utc).strftime("%Y%m%d%H%M%S") + "-" + uuid4().hex[:8]
+        return datetime.now(tz=timezone.utc).strftime("%Y%m%d_%H%M%S")
 
     def _subdir_path(self, subdir: str) -> Path:
         return Path(self.file_manager.base_dir) / subdir
@@ -84,56 +85,57 @@ class DataStorage:
         meta.setdefault("saved_at", self._timestamp())
         return {"metadata": meta, "items": items}
 
+    def _save_run_payload(self, subdir: str, run_id: str, payload: Dict[str, Any]) -> Path:
+        """
+        run_id를 파일명으로 하여 지정 디렉토리에 저장
+        """
+        filename = f"{run_id}.json"
+        return self.file_manager.save_json(payload, filename, subdir=subdir)
+
     # Trends -----------------------------------------------------------------
-    def save_trends(self, keywords: List[Dict[str, Any]], metadata: Optional[Dict[str, Any]] = None, filename: Optional[str] = None) -> Path:
+    def save_trends(self, run_id: str, payload: Dict[str, Any]) -> Path:
         """
         트렌드 키워드 배치를 저장합니다.
         """
-        payload = self._build_payload(keywords, metadata)
-        filename = filename or self.file_manager.generate_filename("trends", "json")
-        return self.file_manager.save_json(payload, filename, subdir=self.config.trends_dir)
+        payload.setdefault("run_id", run_id)
+        payload.setdefault("saved_at", self._timestamp())
+        return self._save_run_payload(self.config.trends_dir, run_id, payload)
+
+    # Keywords ---------------------------------------------------------------
+    def save_keywords(self, run_id: str, keywords: Union[List[Any], Dict[str, Any]], meta: Optional[Dict[str, Any]] = None) -> Path:
+        """
+        키워드 선택/후보 결과를 저장합니다.
+        """
+        payload: Dict[str, Any]
+        if isinstance(keywords, dict):
+            payload = keywords.copy()
+        else:
+            payload = {"keywords": keywords}
+        payload.setdefault("run_id", run_id)
+        payload.setdefault("meta", meta or {})
+        payload.setdefault("saved_at", self._timestamp())
+        return self._save_run_payload(self.config.keywords_dir, run_id, payload)
 
     # Products ---------------------------------------------------------------
-    def save_products(self, products: List[Dict[str, Any]], metadata: Optional[Dict[str, Any]] = None, filename: Optional[str] = None) -> Path:
-        payload = self._build_payload(products, metadata)
-        filename = filename or self.file_manager.generate_filename("products", "json")
-        return self.file_manager.save_json(payload, filename, subdir=self.config.products_dir)
+    def save_products(self, run_id: str, products: List[Dict[str, Any]], meta: Optional[Dict[str, Any]] = None) -> Path:
+        payload = self._build_payload(products, meta)
+        payload.setdefault("run_id", run_id)
+        return self._save_run_payload(self.config.products_dir, run_id, payload)
 
     # Posts ------------------------------------------------------------------
-    def save_post(self, post: Dict[str, Any], metadata: Optional[Dict[str, Any]] = None, filename: Optional[str] = None) -> Path:
-        payload = {
-            "metadata": metadata or {"saved_at": self._timestamp()},
-            "post": post,
-        }
-        filename = filename or self.file_manager.generate_filename("post", "json")
-        return self.file_manager.save_json(payload, filename, subdir=self.config.posts_dir)
+    def save_post(self, run_id: str, post: Dict[str, Any], meta: Optional[Dict[str, Any]] = None) -> Path:
+        payload = {"metadata": meta or {"saved_at": self._timestamp()}, "post": post, "run_id": run_id}
+        return self._save_run_payload(self.config.posts_dir, run_id, payload)
 
     # Logs -------------------------------------------------------------------
-    def save_run_log(self, log_item: Dict[str, Any], filename: Optional[str] = None) -> Path:
+    def save_run_log(self, run_id: str, log_item: Dict[str, Any]) -> Path:
         enriched = log_item.copy()
         enriched.setdefault("timestamp", self._timestamp())
-        filename = filename or self.file_manager.generate_filename("run", "json")
-        return self.file_manager.save_json(enriched, filename, subdir=self.config.logs_dir)
+        enriched.setdefault("run_id", run_id)
+        return self._save_run_payload(self.config.logs_dir, run_id, enriched)
 
     # Keyword history --------------------------------------------------------
-    def save_keyword_history(self, history: List[Dict[str, Any]]) -> Path:
-        """
-        최근 키워드 선택 히스토리를 저장합니다.
-        """
-        trimmed_history = history[-self.config.keyword_history_limit :]
-        path = Path(self.file_manager.base_dir) / self.config.logs_dir / self.config.keyword_history_file
-        payload = {
-            "metadata": {
-                "saved_at": self._timestamp(),
-                "count": len(trimmed_history),
-            },
-            "history": trimmed_history,
-        }
-        with path.open("w", encoding="utf-8") as fp:
-            json.dump(payload, fp, ensure_ascii=False, indent=2)
-        return path
-
-    def load_keyword_history(self) -> List[Dict[str, Any]]:
+    def load_keyword_history(self, limit: Optional[int] = None) -> List[str]:
         """
         키워드 히스토리를 로드합니다.
         """
@@ -143,59 +145,68 @@ class DataStorage:
         try:
             with path.open("r", encoding="utf-8") as fp:
                 payload = json.load(fp)
-        except (json.JSONDecodeError, OSError):
-            logger.warning("키워드 히스토리 파일을 읽을 수 없습니다. 새로 생성합니다.")
+        except (json.JSONDecodeError, OSError) as exc:
+            logger.warning("키워드 히스토리를 읽을 수 없습니다: %s", exc)
             return []
 
         history = payload.get("history")
         if not isinstance(history, list):
             return []
 
-        sanitized: List[Dict[str, Any]] = []
-        for item in history[-self.config.keyword_history_limit :]:
-            if isinstance(item, dict) and isinstance(item.get("keyword"), str):
-                sanitized.append(item)
-        return sanitized
+        keywords: List[str] = []
+        for item in history:
+            if isinstance(item, dict):
+                value = item.get("keyword")
+            else:
+                value = item
+            if isinstance(value, str) and value.strip():
+                keywords.append(value.strip())
+        if limit and limit > 0:
+            return keywords[-limit:]
+        return keywords
+
+    def append_keyword_history(self, keyword: str, max_size: int = 200) -> None:
+        """
+        새 키워드를 히스토리에 추가하고 max_size를 넘으면 오래된 항목을 제거합니다.
+        """
+        if not keyword:
+            return
+        path = self._subdir_path(self.config.logs_dir) / self.config.keyword_history_file
+        existing = self.load_keyword_history()  # already handles missing
+        existing.append(keyword)
+        trimmed = existing[-max_size:]
+        payload = {
+            "metadata": {"saved_at": self._timestamp(), "count": len(trimmed)},
+            "history": [{"keyword": k} for k in trimmed],
+        }
+        try:
+            path.parent.mkdir(parents=True, exist_ok=True)
+            with path.open("w", encoding="utf-8") as fp:
+                json.dump(payload, fp, ensure_ascii=False, indent=2)
+        except OSError as exc:
+            logger.warning("키워드 히스토리 저장 실패: %s", exc)
 
     # Retrieval helpers ------------------------------------------------------
-    def load_latest_trends(self, limit: Optional[int] = None) -> List[Dict[str, Any]]:
-        """
-        가장 최근에 저장된 트렌드 파일에서 데이터를 로드합니다.
-        """
-        files = self._list_json_files(self.config.trends_dir)
-        if not files:
-            return []
-        payload = self._read_json_file(files[0])
-        if not payload:
-            return []
-        items = payload.get("items", [])
-        if not isinstance(items, list):
-            return []
-        return items[:limit] if isinstance(limit, int) and limit > 0 else items
-
-    def load_latest_products(self, limit: Optional[int] = None) -> List[Dict[str, Any]]:
-        files = self._list_json_files(self.config.products_dir)
-        if not files:
-            return []
-        payload = self._read_json_file(files[0])
-        if not payload:
-            return []
-        items = payload.get("items", [])
-        if not isinstance(items, list):
-            return []
-        return items[:limit] if isinstance(limit, int) and limit > 0 else items
-
-    def load_latest_post(self) -> Optional[Dict[str, Any]]:
-        files = self._list_json_files(self.config.posts_dir)
+    def _load_latest_from(self, subdir: str) -> Optional[Dict[str, Any]]:
+        files = self._list_json_files(subdir)
         if not files:
             return None
-        payload = self._read_json_file(files[0])
-        if not payload:
-            return None
-        return payload.get("post")
+        return self._read_json_file(files[0])
+
+    def load_latest_trends(self) -> Optional[Dict[str, Any]]:
+        return self._load_latest_from(self.config.trends_dir)
+
+    def load_latest_keywords(self) -> Optional[Dict[str, Any]]:
+        return self._load_latest_from(self.config.keywords_dir)
+
+    def load_latest_products(self) -> Optional[Dict[str, Any]]:
+        return self._load_latest_from(self.config.products_dir)
+
+    def load_latest_posts(self) -> Optional[Dict[str, Any]]:
+        return self._load_latest_from(self.config.posts_dir)
 
     def load_recent_run_logs(self, limit: int = 10) -> List[Dict[str, Any]]:
-        files = self._list_json_files(self.config.logs_dir, pattern="run_*.json")
+        files = self._list_json_files(self.config.logs_dir, pattern="*.json")
         logs: List[Dict[str, Any]] = []
         for path in files[:limit]:
             payload = self._read_json_file(path)
