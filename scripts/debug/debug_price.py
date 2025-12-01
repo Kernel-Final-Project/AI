@@ -3,9 +3,9 @@
 실제 HTML 구조를 확인하여 가격이 어떻게 표시되는지 분석
 """
 import sys
-from scraper.html_extractor import load_html_ssr, load_html_csr
-from scraper.product_parser import detect_product_list, detect_price
-from scraper.ssr_csr_checker import check_ssr_csr
+from parsers.base.html_extractor import load_html_ssr, load_html_csr
+from parsers.base.product_parser import detect_product_list, detect_price
+from parsers.base.ssr_csr_checker import check_ssr_csr
 from bs4 import BeautifulSoup
 import re
 

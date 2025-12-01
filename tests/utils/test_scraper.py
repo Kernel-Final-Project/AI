@@ -1,8 +1,8 @@
 """
 범용 HTML 크롤링 파이프라인 테스트 스크립트
 """
-from scraper.ssr_csr_checker import check_ssr_csr
-from scraper.html_extractor import extract_html, extract_html_with_fallback
+from parsers.base.ssr_csr_checker import check_ssr_csr
+from parsers.base.html_extractor import extract_html, extract_html_with_fallback
 from utils.logger import logger
 
 
@@ -89,7 +89,7 @@ def test_dom_elements_check():
     print("DOM 요소 확인 기능 테스트")
     print("="*60)
     
-    from scraper.html_extractor import _extract_with_selenium
+    from parsers.base.html_extractor import _extract_with_selenium
     
     test_urls = [
         "https://www.musinsa.com",  # 무신사 (CSR)

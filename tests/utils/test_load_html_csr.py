@@ -1,7 +1,7 @@
 """
 load_html_csr() 함수 테스트
 """
-from scraper.html_extractor import load_html_csr
+from parsers.base.html_extractor import load_html_csr
 from utils.logger import logger
 
 

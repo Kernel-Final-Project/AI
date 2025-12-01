@@ -3,9 +3,9 @@
 페이지에 실제로 몇 개의 상품이 있는지, 스크롤을 내리면 더 로드되는지 확인
 """
 import sys
-from scraper.html_extractor import load_html_ssr, load_html_csr
-from scraper.product_parser import detect_product_list, parse_products
-from scraper.ssr_csr_checker import check_ssr_csr
+from parsers.base.html_extractor import load_html_ssr, load_html_csr
+from parsers.base.product_parser import detect_product_list, parse_products
+from parsers.base.ssr_csr_checker import check_ssr_csr
 from selenium import webdriver
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait

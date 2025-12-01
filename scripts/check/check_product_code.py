@@ -4,9 +4,9 @@
 """
 import sys
 import re
-from scraper.html_extractor import load_html_ssr, load_html_csr
-from scraper.product_parser import detect_product_list
-from scraper.ssr_csr_checker import check_ssr_csr
+from parsers.base.html_extractor import load_html_ssr, load_html_csr
+from parsers.base.product_parser import detect_product_list
+from parsers.base.ssr_csr_checker import check_ssr_csr
 from bs4 import BeautifulSoup
 
 def check_product_code(url: str):

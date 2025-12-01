@@ -1,7 +1,7 @@
 """
 BeautifulSoup 파싱 기능 테스트
 """
-from scraper.html_extractor import load_html_ssr, _extract_with_requests
+from parsers.base.html_extractor import load_html_ssr, _extract_with_requests
 from utils.logger import logger
 
 
