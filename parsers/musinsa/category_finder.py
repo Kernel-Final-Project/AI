@@ -1,13 +1,15 @@
 """
 무신사 사이트의 모든 카테고리 경로를 찾는 모듈
 """
-from typing import List
+from typing import List, Optional
 from selenium import webdriver
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.common.action_chains import ActionChains
 import time
+import json
+from pathlib import Path
 
 from utils.logger import logger
 from auto_posting.browser_utils import setup_browser
@@ -208,6 +210,100 @@ def print_category_paths(paths: List[List[str]]):
     for i, path in enumerate(paths, 1):
         path_str = " > ".join(path)
         print(f"{i:4d}. {path_str}")
+
+
+def save_category_paths(paths: List[List[str]], filename: str = "data/musinsa/all_categories.json") -> None:
+    """
+    카테고리 경로를 JSON 파일로 저장
+    
+    Args:
+        paths: 카테고리 경로 리스트
+        filename: 저장할 파일 경로
+    """
+    try:
+        file_path = Path(filename)
+        file_path.parent.mkdir(parents=True, exist_ok=True)
+        
+        with open(file_path, 'w', encoding='utf-8') as f:
+            json.dump(paths, f, ensure_ascii=False, indent=2)
+        
+        logger.info(f"카테고리 경로 {len(paths)}개를 {filename}에 저장했습니다")
+    except Exception as e:
+        logger.error(f"카테고리 경로 저장 중 오류: {e}")
+
+
+def load_category_paths(filename: str = "data/musinsa/all_categories.json") -> List[List[str]]:
+    """
+    저장된 카테고리 경로 불러오기
+    
+    Args:
+        filename: 불러올 파일 경로
+        
+    Returns:
+        카테고리 경로 리스트 (파일이 없으면 빈 리스트)
+    """
+    try:
+        file_path = Path(filename)
+        if not file_path.exists():
+            logger.info(f"카테고리 경로 파일이 없습니다: {filename}")
+            return []
+        
+        with open(file_path, 'r', encoding='utf-8') as f:
+            paths = json.load(f)
+        
+        logger.info(f"카테고리 경로 {len(paths)}개를 {filename}에서 불러왔습니다")
+        return paths
+    except Exception as e:
+        logger.error(f"카테고리 경로 불러오기 중 오류: {e}")
+        return []
+
+
+def find_category_path_by_names(
+    main: str,
+    sub: Optional[str] = None,
+    all_paths: Optional[List[List[str]]] = None
+) -> List[List[str]]:
+    """
+    메인/서브 카테고리 이름으로 경로 찾기
+    
+    Args:
+        main: 메인 카테고리 이름 (예: "신발")
+        sub: 서브 카테고리 이름 (예: "스니커즈", None이면 메인만 매칭)
+        all_paths: 전체 카테고리 경로 리스트 (None이면 자동 로드)
+        
+    Returns:
+        매칭되는 카테고리 경로 리스트
+    """
+    # all_paths가 없으면 자동으로 로드
+    if all_paths is None:
+        all_paths = load_category_paths()
+        if not all_paths:
+            logger.warning("카테고리 경로 파일이 없습니다. 자동 생성 중...")
+            all_paths = find_all_category_paths()
+            save_category_paths(all_paths)
+    
+    matching_paths = []
+    
+    for path in all_paths:
+        if len(path) == 0:
+            continue
+        
+        # 메인 카테고리 매칭 확인
+        if path[0] != main:
+            continue
+        
+        # 서브 카테고리가 지정되지 않았으면 메인만 매칭
+        if sub is None:
+            matching_paths.append(path)
+            continue
+        
+        # 서브 카테고리 매칭 확인
+        if len(path) >= 2 and path[1] == sub:
+            matching_paths.append(path)
+        elif len(path) >= 2 and sub in path[1]:  # 부분 매칭도 허용
+            matching_paths.append(path)
+    
+    return matching_paths
 
 
 if __name__ == "__main__":
