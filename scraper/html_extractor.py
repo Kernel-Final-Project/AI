@@ -14,6 +14,7 @@ import time
 from scraper.ssr_csr_checker import check_ssr_csr, CheckResult
 from auto_posting.browser_utils import setup_browser
 from utils.logger import logger
+from urllib.parse import urlparse
 
 
 def extract_html(
@@ -300,6 +301,12 @@ def _extract_with_selenium(
         # 3. 주요 DOM 요소들 확인 (Explicit wait)
         _wait_for_dom_elements(driver, selectors=custom_selectors, timeout=explicit_wait_timeout)
         
+        # 4. 이벤트 배너 처리 (메인 페이지로 이동)
+        try:
+            handle_event_banner_and_navigate_to_main(driver, url)
+        except Exception as e:
+            logger.warning(f"이벤트 배너 처리 중 오류 (무시하고 계속 진행): {e}")
+        
         # HTML 추출
         html = driver.page_source
         
@@ -402,3 +409,357 @@ def extract_html_with_fallback(
             explicit_wait_timeout=explicit_wait_timeout
         )
 
+
+# ========== 이벤트 배너 처리 함수들 ==========
+
+def detect_event_banner(driver: webdriver.Chrome) -> bool:
+    """
+    이벤트 배너/팝업이 있는지 감지
+    
+    Args:
+        driver: Selenium WebDriver
+        
+    Returns:
+        이벤트 배너가 감지되었는지 여부 (bool)
+    """
+    try:
+        current_url = driver.current_url.lower()
+        
+        # URL 패턴으로 이벤트 페이지 감지
+        event_keywords = [
+            'campaign', 'event', 'promotion', 'sale', 
+            'popup', 'modal', 'banner', 'mujinjang'
+        ]
+        
+        if any(keyword in current_url for keyword in event_keywords):
+            logger.info(f"이벤트 페이지 감지: {current_url}")
+            return True
+        
+        # 실제 팝업/모달만 감지 (범용적인 방법)
+        # 팝업/모달의 특징: 큰 크기, 높은 z-index, 배경 오버레이 등
+        popup_modal_selectors = [
+            "//*[contains(@class, 'modal')]",
+            "//*[contains(@class, 'popup')]",
+            "//*[contains(@class, 'overlay')]",
+            "//*[contains(@class, 'dialog')]",
+            "//*[@role='dialog']",
+            "//*[@role='alertdialog']",
+        ]
+        
+        for selector in popup_modal_selectors:
+            try:
+                elements = driver.find_elements(By.XPATH, selector)
+                for elem in elements:
+                    if not elem.is_displayed():
+                        continue
+                    
+                    # 팝업/모달 특징 확인 (범용적)
+                    try:
+                        size = elem.size
+                        # 큰 크기 (300x300 이상) = 팝업/모달 가능성
+                        if size['width'] > 300 or size['height'] > 300:
+                            z_index = driver.execute_script(
+                                "return window.getComputedStyle(arguments[0]).zIndex", elem
+                            )
+                            # 높은 z-index (100 이상) = 팝업/모달 가능성
+                            if z_index and z_index != 'auto' and int(z_index) > 100:
+                                logger.debug(f"팝업/모달 감지: {selector}")
+                                return True
+                    except:
+                        continue
+            except:
+                continue
+        
+        # 닫기 버튼이 있는지 확인 (팝업/모달 존재 가능성)
+        close_selectors = [
+            "//button[contains(@class, 'close')]",
+            "//button[contains(@class, 'CloseButton')]",
+            "//button[contains(@aria-label, '닫기')]",
+            "//button[contains(@aria-label, 'close')]",
+            "//button[contains(text(), '닫기')]",
+            "//button[contains(text(), 'X')]",
+            "//*[contains(@class, 'close') and contains(@class, 'button')]",
+            "//*[@aria-label='닫기' or @aria-label='close']"
+        ]
+        
+        for selector in close_selectors:
+            try:
+                elements = driver.find_elements(By.XPATH, selector)
+                for elem in elements:
+                    if elem.is_displayed():
+                        logger.debug(f"닫기 버튼 발견: {selector}")
+                        return True
+            except:
+                continue
+        
+        return False
+        
+    except Exception as e:
+        logger.warning(f"이벤트 배너 감지 중 오류: {e}")
+        return False
+
+
+def close_event_banner(driver: webdriver.Chrome, timeout: float = 5.0) -> bool:
+    """
+    이벤트 배너/팝업 닫기 버튼 찾아서 클릭
+    
+    Args:
+        driver: Selenium WebDriver
+        timeout: 닫기 버튼 찾기 타임아웃 (초)
+        
+    Returns:
+        닫기 성공 여부 (bool)
+    """
+    try:
+        # 다양한 닫기 버튼 선택자 시도
+        close_selectors = [
+            # AI 챗봇 특화 (우선 시도)
+            "//*[contains(@class, 'ai') or contains(@class, 'AI')]//button[contains(@class, 'close')]",
+            "//*[contains(@class, 'chatbot') or contains(@class, 'Chatbot')]//button[contains(@class, 'close')]",
+            "//*[contains(@class, 'assistant') or contains(@class, 'Assistant')]//button[contains(@class, 'close')]",
+            "//*[contains(@id, 'ai') or contains(@id, 'AI')]//button[contains(@class, 'close')]",
+            "//*[contains(@id, 'chatbot') or contains(@id, 'Chatbot')]//button[contains(@class, 'close')]",
+            "//*[contains(@class, 'ai') or contains(@class, 'AI')]//*[contains(@class, 'close')]",
+            "//*[contains(@class, 'chatbot') or contains(@class, 'Chatbot')]//*[contains(@class, 'close')]",
+            "//*[contains(@class, 'ai') or contains(@class, 'AI')]//*[contains(text(), 'X') or contains(text(), '×')]",
+            "//*[contains(@class, 'chatbot') or contains(@class, 'Chatbot')]//*[contains(text(), 'X') or contains(text(), '×')]",
+            # 무신사 특화
+            "//*[contains(@class, 'LocalAppBar__CloseButton')]",
+            "//div[contains(@class, 'LocalAppBar__CloseButton')]",
+            "//button[contains(@class, 'LocalAppBar__CloseButton')]",
+            # X 버튼 (텍스트)
+            "//button[contains(text(), 'X') or contains(text(), '×')]",
+            "//*[contains(text(), 'X') or contains(text(), '×')]",
+            # 닫기 버튼 (텍스트)
+            "//button[contains(text(), '닫기') or contains(text(), 'Close')]",
+            "//*[contains(text(), '닫기') or contains(text(), 'Close')]",
+            # aria-label
+            "//button[contains(@aria-label, '닫기') or contains(@aria-label, 'close')]",
+            "//*[@aria-label='닫기' or @aria-label='close' or @aria-label='Close']",
+            # class 기반 (더 포괄적)
+            "//*[contains(@class, 'close') or contains(@class, 'CloseButton')]",
+            "//button[contains(@class, 'close') or contains(@class, 'CloseButton')]",
+            "//div[contains(@class, 'close') or contains(@class, 'CloseButton')]",
+            "//*[contains(@class, 'close') and (contains(@class, 'button') or contains(@class, 'btn'))]",
+            # data 속성
+            "//button[contains(@data-testid, 'close')]",
+            "//*[@data-role='close']",
+            # 일반적인 닫기 아이콘
+            "//*[contains(@class, 'icon-close') or contains(@class, 'close-icon')]",
+            # role 속성
+            "//*[@role='button' and (contains(@class, 'close') or contains(@aria-label, 'close'))]",
+        ]
+        
+        for selector in close_selectors:
+            try:
+                elements = driver.find_elements(By.XPATH, selector)
+                for elem in elements:
+                    try:
+                        if elem.is_displayed() and elem.is_enabled():
+                            # 스크롤해서 보이도록
+                            driver.execute_script("arguments[0].scrollIntoView(true);", elem)
+                            time.sleep(0.2)
+                            
+                            # 클릭 시도
+                            try:
+                                elem.click()
+                                logger.info(f"이벤트 배너 닫기 성공: {selector}")
+                                time.sleep(1)  # 닫힐 시간 대기
+                                return True
+                            except:
+                                # JavaScript 클릭 시도
+                                driver.execute_script("arguments[0].click();", elem)
+                                logger.info(f"이벤트 배너 닫기 성공 (JS): {selector}")
+                                time.sleep(1)
+                                return True
+                    except:
+                        continue
+            except:
+                continue
+        
+        logger.warning("이벤트 배너 닫기 버튼을 찾지 못했습니다")
+        return False
+        
+    except Exception as e:
+        logger.error(f"이벤트 배너 닫기 중 오류: {e}")
+        return False
+
+
+def is_main_page(driver: webdriver.Chrome, original_url: str) -> bool:
+    """
+    현재 페이지가 메인 페이지인지 확인
+    
+    Args:
+        driver: Selenium WebDriver
+        original_url: 원래 접속하려던 URL
+        
+    Returns:
+        메인 페이지인지 여부 (bool)
+    """
+    try:
+        current_url = driver.current_url
+        
+        # URL 비교 (도메인만 비교)
+        original_domain = urlparse(original_url).netloc
+        current_domain = urlparse(current_url).netloc
+        
+        if original_domain != current_domain:
+            logger.debug(f"도메인이 다름: {original_domain} != {current_domain}")
+            return False
+        
+        # 메인 페이지 URL 패턴 확인
+        main_page_patterns = [
+            '/',  # 루트
+            '/main',
+            '/index',
+            '/home',
+        ]
+        
+        current_path = urlparse(current_url).path.rstrip('/')
+        
+        # 이벤트 페이지 패턴 제외
+        event_patterns = [
+            '/campaign',
+            '/event',
+            '/promotion',
+            '/sale',
+            '/popup',
+            '/modal',
+        ]
+        
+        if any(pattern in current_path for pattern in event_patterns):
+            logger.debug(f"이벤트 페이지 패턴 감지: {current_path}")
+            return False
+        
+        # 메인 페이지 패턴 확인
+        if current_path == '' or current_path == '/' or any(pattern in current_path for pattern in main_page_patterns):
+            logger.debug(f"메인 페이지로 판단: {current_url}")
+            return True
+        
+        # 추가 확인: 네비게이션 메뉴가 있는지 확인
+        nav_selectors = [
+            "//nav",
+            "//*[contains(@class, 'nav')]",
+            "//*[contains(@class, 'menu')]",
+            "//*[contains(@class, 'gnb')]",  # Global Navigation Bar
+            "//*[contains(@id, 'nav')]",
+            "//*[contains(@id, 'menu')]",
+        ]
+        
+        for selector in nav_selectors:
+            try:
+                elements = driver.find_elements(By.XPATH, selector)
+                if elements:
+                    logger.debug(f"네비게이션 메뉴 발견: {selector}")
+                    return True
+            except:
+                continue
+        
+        logger.debug(f"메인 페이지가 아닌 것으로 판단: {current_url}")
+        return False
+        
+    except Exception as e:
+        logger.warning(f"메인 페이지 확인 중 오류: {e}")
+        return False
+
+
+def handle_event_banner_and_navigate_to_main(
+    driver: webdriver.Chrome,
+    original_url: str,
+    max_attempts: int = 3
+) -> tuple[bool, str]:
+    """
+    이벤트 배너가 있으면 닫고 메인 페이지로 이동
+    
+    Args:
+        driver: Selenium WebDriver
+        original_url: 원래 접속하려던 URL
+        max_attempts: 최대 시도 횟수
+        
+    Returns:
+        (성공 여부, 현재 URL) 튜플
+    """
+    try:
+        # 현재 URL 확인
+        current_url = driver.current_url
+        logger.info(f"원래 URL: {original_url}")
+        logger.info(f"현재 URL: {current_url}")
+        
+        # 이미 메인 페이지인지 확인
+        if is_main_page(driver, original_url):
+            logger.info("이미 메인 페이지입니다")
+            return True, current_url
+        
+        # 이벤트 배너 감지
+        if not detect_event_banner(driver):
+            logger.info("이벤트 배너가 감지되지 않았습니다")
+            # 메인 페이지가 아니지만 이벤트 배너도 아닌 경우
+            # 원래 URL로 이동 시도
+            try:
+                driver.get(original_url)
+                time.sleep(2)
+                if is_main_page(driver, original_url):
+                    return True, driver.current_url
+            except:
+                pass
+            return False, current_url
+        
+        # 이벤트 배너 닫기 시도
+        logger.info("이벤트 배너 감지, 닫기 시도...")
+        for attempt in range(max_attempts):
+            logger.info(f"닫기 시도 {attempt + 1}/{max_attempts}")
+            
+            if close_event_banner(driver):
+                time.sleep(2)  # 페이지 변화 대기
+                
+                # 메인 페이지인지 확인
+                if is_main_page(driver, original_url):
+                    logger.info("메인 페이지로 이동 성공")
+                    return True, driver.current_url
+                
+                # 여전히 이벤트 페이지인 경우 원래 URL로 이동 시도
+                if detect_event_banner(driver):
+                    logger.info("여전히 이벤트 페이지입니다. 원래 URL로 이동 시도...")
+                    try:
+                        # 쿠키 설정으로 이벤트 페이지 건너뛰기 시도
+                        try:
+                            driver.add_cookie({'name': 'skip_event', 'value': 'true'})
+                        except:
+                            pass
+                        
+                        # 원래 URL로 이동
+                        driver.get(original_url)
+                        time.sleep(3)
+                        
+                        # 메인 페이지인지 확인
+                        if is_main_page(driver, original_url):
+                            return True, driver.current_url
+                        
+                        # 여전히 이벤트 페이지인 경우, 메인 페이지의 특정 경로로 직접 이동 시도
+                        parsed = urlparse(original_url)
+                        main_paths = [
+                            f"{parsed.scheme}://{parsed.netloc}/",
+                            f"{parsed.scheme}://{parsed.netloc}/main",
+                            f"{parsed.scheme}://{parsed.netloc}/index",
+                        ]
+                        
+                        for main_path in main_paths:
+                            try:
+                                driver.get(main_path)
+                                time.sleep(2)
+                                if is_main_page(driver, original_url):
+                                    return True, driver.current_url
+                            except:
+                                continue
+                                
+                    except Exception as e:
+                        logger.warning(f"원래 URL로 이동 실패: {e}")
+            
+            time.sleep(1)
+        
+        logger.warning("이벤트 배너를 닫고 메인 페이지로 이동하지 못했습니다")
+        return False, driver.current_url
+        
+    except Exception as e:
+        logger.error(f"이벤트 배너 처리 중 오류: {e}")
+        return False, driver.current_url
