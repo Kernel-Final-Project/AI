@@ -1,86 +1,119 @@
 """
-트렌드 상품 1개 랜덤 선택 모듈
-AI1 담당
+키워드 선택/히스토리 관리 모듈
 """
 from __future__ import annotations
 
 import random
-from typing import Dict, List, Optional, Sequence, Set
+from typing import Any, Dict, Iterable, List, Optional, Sequence, Set, Tuple, Union
 
+from storage import DataStorage
 from utils.logger import logger
 
 DEFAULT_HISTORY_LIMIT = 50
+DEFAULT_MAX_HISTORY_SIZE = 200
+DEFAULT_WEIGHTED = True
 
 
 def _normalize_keyword(keyword: str) -> str:
     return " ".join(keyword.strip().lower().split())
 
 
-def _filter_used_keywords(keywords: List[Dict], history: Sequence[Dict], history_limit: int) -> List[Dict]:
+def _extract_keyword(item: Union[str, Dict[str, Any]]) -> Optional[str]:
+    if isinstance(item, str):
+        value = item
+    elif isinstance(item, dict):
+        value = item.get("keyword") or item.get("name") or item.get("text")
+    else:
+        value = None
+    if isinstance(value, str):
+        cleaned = value.strip()
+        return cleaned if cleaned else None
+    return None
+
+
+def _filter_used_keywords(candidates: List[str], history: Sequence[str], history_limit: int) -> List[str]:
     if not history:
-        return keywords
+        return candidates
 
     normalized_used: Set[str] = set()
-    for item in history[-history_limit:]:
-        value = item.get("keyword")
-        if not isinstance(value, str):
+    for kw in history[-history_limit:]:
+        normalized_used.add(_normalize_keyword(kw))
+
+    fresh: List[str] = []
+    for kw in candidates:
+        norm = _normalize_keyword(kw)
+        if norm in normalized_used:
             continue
-        normalized_used.add(_normalize_keyword(value))
+        fresh.append(kw)
 
-    fresh_keywords: List[Dict] = []
-    for item in keywords:
-        keyword = str(item.get("keyword", "")).strip()
-        if not keyword:
+    if not fresh:
+        logger.info("히스토리에 없는 후보가 없어 전체 후보를 사용합니다.")
+        return candidates
+    return fresh
+
+
+def _prepare_candidates(raw_candidates: Iterable[Union[str, Dict[str, Any]]]) -> List[str]:
+    prepared: List[str] = []
+    seen: Set[str] = set()
+    for item in raw_candidates:
+        kw = _extract_keyword(item)
+        if not kw:
             continue
-        normalized = _normalize_keyword(keyword)
-        if normalized in normalized_used:
+        norm = _normalize_keyword(kw)
+        if norm in seen:
             continue
-        fresh_keywords.append(item)
-
-    if not fresh_keywords:
-        logger.info("사용하지 않은 키워드가 없어 히스토리를 초기화합니다.")
-        return keywords
-    return fresh_keywords
+        seen.add(norm)
+        prepared.append(kw)
+    return prepared
 
 
-def select_random_keyword(
-    keywords: List[Dict],
-    history: Optional[Sequence[Dict]] = None,
+def _choose(candidates: List[str], weighted: bool = DEFAULT_WEIGHTED) -> Optional[str]:
+    if not candidates:
+        return None
+    if not weighted:
+        return random.choice(candidates)
+    # 현재는 점수 정보가 없으므로 균등 가중치. 구조만 남겨둠.
+    weights = [1.0 for _ in candidates]
+    return random.choices(candidates, weights=weights, k=1)[0]
+
+
+def select_keyword(
+    candidates: Iterable[Union[str, Dict[str, Any]]],
+    *,
     history_limit: int = DEFAULT_HISTORY_LIMIT,
-    weighted: bool = False,
-) -> Optional[Dict]:
+    weighted: bool = DEFAULT_WEIGHTED,
+    max_history_size: int = DEFAULT_MAX_HISTORY_SIZE,
+    storage: Optional[DataStorage] = None,
+) -> Optional[str]:
     """
-    수집된 키워드 중 1개를 랜덤으로 선택합니다.
-    최근 히스토리에 포함된 키워드는 피합니다.
-    weighted=True인 경우 score 기반 가중치 랜덤을 사용합니다.
+    히스토리를 참고하여 키워드 1개를 선택하고 히스토리에 기록합니다.
     """
-    if not keywords:
-        logger.warning("선택할 키워드가 없습니다.")
+    try:
+        prepared_candidates = _prepare_candidates(candidates)
+        if not prepared_candidates:
+            logger.warning("선택할 후보 키워드가 없습니다.")
+            return None
+
+        store = storage or DataStorage()
+        history = store.load_keyword_history(limit=history_limit)
+
+        filtered = _filter_used_keywords(prepared_candidates, history, history_limit)
+        selected = _choose(filtered, weighted=weighted)
+        if not selected:
+            selected = _choose(prepared_candidates, weighted=weighted)
+
+        if not selected:
+            logger.warning("키워드 선택에 실패했습니다.")
+            return None
+
+        store.append_keyword_history(selected, max_size=max_history_size)
+        logger.info("선택된 키워드: %s", selected)
+        return selected
+    except Exception as exc:  # pragma: no cover - 안전장치
+        logger.warning("키워드 선택 중 예외 발생: %s", exc)
         return None
 
-    candidates = _filter_used_keywords(keywords, history or [], history_limit)
 
-    if weighted:
-        weights = []
-        for item in candidates:
-            raw_score = item.get("score", 0)
-            try:
-                weight = max(float(raw_score), 1.0)
-            except (TypeError, ValueError):
-                weight = 1.0
-            weights.append(weight)
-        selected = random.choices(candidates, weights=weights, k=1)[0]
-    else:
-        selected = random.choice(candidates)
-
-    logger.info(f"선택된 키워드: {selected.get('keyword', 'Unknown')}")
-    return selected
-
-
-def rank_keywords_by_score(keywords: List[Dict]) -> List[Dict]:
-    """
-    키워드를 점수 기반으로 정렬합니다.
-    """
-    logger.info(f"{len(keywords)}개 키워드 점수 기반 정렬")
-    sorted_keywords = sorted(keywords, key=lambda x: x.get("score", 0), reverse=True)
-    return sorted_keywords
+def rank_keywords_by_score(keywords: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    logger.info("%s개 키워드 점수 기반 정렬", len(keywords))
+    return sorted(keywords, key=lambda x: x.get("score", 0), reverse=True)

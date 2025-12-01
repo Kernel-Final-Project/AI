@@ -2,7 +2,6 @@
 프롬프트 빌더 모듈
 AI2 담당
 """
-
 from typing import Dict, List
 
 
@@ -46,8 +45,21 @@ def build_outline_prompt(keyword: str, title: str, product_info: str = "") -> st
     Returns:
         아웃라인 생성 프롬프트
     """
-    template = load_prompt("outline_prompt")
-    return template.format(keyword=keyword, title=title, product_info=product_info)
+    prompt = f"""
+다음 정보를 바탕으로 블로그 글의 아웃라인을 생성하세요.
+
+제목: {title}
+키워드: {keyword}
+상품 정보: {product_info}
+
+요구사항:
+- 5~7개 섹션으로 구성
+- h2, h3 태그 구조 포함
+- 각 섹션별 간단한 설명 포함
+
+아웃라인을 JSON 형식으로 제공해주세요.
+"""
+    return prompt.strip()
 
 
 def format_outline_for_prompt(outline: Dict) -> str:
@@ -90,16 +102,22 @@ def build_body_prompt(
     Returns:
         본문 생성 프롬프트
     """
-    template = load_prompt("content_prompt")
-    # outline을 읽기 쉬운 형식으로 변환
-    outline_str = (
-        format_outline_for_prompt(outline)
-        if isinstance(outline, dict)
-        else str(outline)
-    )
-    return template.format(
-        keyword=keyword,
-        title=title,
-        outline=outline_str,
-        product_info=product_info if product_info else "없음",
-    )
+    prompt = f"""
+다음 정보를 바탕으로 자연스럽고 읽기 쉬운 블로그 본문을 생성하세요.
+
+제목: {title}
+키워드: {keyword}
+아웃라인: {outline}
+상품 정보: {product_info}
+
+요구사항:
+- 1,000~1,500자 분량
+- h2, h3 태그 포함
+- 자연스럽고 광고 느낌 없는 문체
+- SEO 최적화
+- 키워드 자연스럽게 배치
+
+HTML 형식으로 본문을 생성해주세요.
+"""
+    return prompt.strip()
+
