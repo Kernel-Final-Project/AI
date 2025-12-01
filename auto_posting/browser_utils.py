@@ -33,6 +33,11 @@ def setup_browser(headless: bool = False) -> webdriver.Chrome:
     service = Service(ChromeDriverManager().install())
     driver = webdriver.Chrome(service=service, options=chrome_options)
     
+    # Implicit wait 설정 (모든 요소 찾기 작업에 기본 대기 시간 적용)
+    implicit_wait_time = 10  # 10초
+    driver.implicitly_wait(implicit_wait_time)
+    logger.debug(f"Implicit wait 설정: {implicit_wait_time}초")
+    
     logger.info("Chrome 브라우저 설정 완료")
     return driver
 
