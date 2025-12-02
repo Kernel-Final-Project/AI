@@ -6,6 +6,8 @@ from __future__ import annotations
 
 import json
 import threading
+from datetime import datetime, timezone
+
 import pika
 from pika.adapters.blocking_connection import BlockingChannel
 
@@ -83,7 +85,8 @@ class BlogUploadConsumer:
         try:
             request = BlogUploadRequest.from_json(body)
             result = execute_blog_upload(request)
-            _notify_webhook(request, result)
+            completed_at = datetime.now(timezone.utc).isoformat()
+            _notify_webhook(request, result, completed_at)
             ch.basic_ack(delivery_tag=method.delivery_tag)
         except json.JSONDecodeError as exc:
             logger.error("메시지 JSON 파싱 실패: %s", exc)
@@ -98,7 +101,9 @@ def run_consumer() -> None:
     consumer.start()
 
 
-def _notify_webhook(request: BlogUploadRequest, result: UploadResult) -> None:
+def _notify_webhook(
+    request: BlogUploadRequest, result: UploadResult, completed_at: str
+) -> None:
     work_id = str(request.work_id) if request.work_id is not None else None
     notify_upload_result(
         result,
@@ -106,5 +111,6 @@ def _notify_webhook(request: BlogUploadRequest, result: UploadResult) -> None:
         token=request.webhook_token,
         timeout=5,
         work_id=work_id,
+        completed_at=completed_at,
         log=logger,
     )

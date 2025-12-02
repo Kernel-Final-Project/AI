@@ -7,7 +7,7 @@ from __future__ import annotations
 import argparse
 import json
 import sys
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
 
@@ -163,11 +163,13 @@ def run_cli():
             wait_time=args.wait_time,
         )
 
+    completed_at = datetime.now(timezone.utc).isoformat()
     _log_result(result, args.work_id)
-    _send_webhook_if_needed(result, args)
+    _send_webhook_if_needed(result, args, completed_at)
 
     if args.emit_json:
         response = result.to_payload(work_id=args.work_id)
+        response["completedAt"] = completed_at
         print(json.dumps(response, ensure_ascii=False))
 
     sys.exit(0 if result.success else 1)
@@ -183,13 +185,16 @@ def _log_result(result: UploadResult, work_id: Optional[str]) -> None:
         logger.info("결과 메시지: %s", result.message)
 
 
-def _send_webhook_if_needed(result: UploadResult, args: argparse.Namespace) -> None:
+def _send_webhook_if_needed(
+    result: UploadResult, args: argparse.Namespace, completed_at: str
+) -> None:
     notify_upload_result(
         result,
         webhook_url=args.webhook_url,
         token=args.webhook_token,
         timeout=args.webhook_timeout,
         work_id=args.work_id,
+        completed_at=completed_at,
         log=logger,
     )
 

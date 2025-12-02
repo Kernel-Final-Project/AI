@@ -55,6 +55,7 @@ def notify_upload_result(
     token: Optional[str] = None,
     timeout: int = 5,
     work_id: Optional[str] = None,
+    completed_at: Optional[str] = None,
     log: Optional[logging.Logger] = None,
 ) -> None:
     """
@@ -65,6 +66,8 @@ def notify_upload_result(
 
     logger_to_use = log or logger
     payload = result.to_payload(work_id=work_id)
+    if completed_at:
+        payload["completedAt"] = completed_at
     logger_to_use.info(
         "웹훅 전송: url=%s timeout=%s status=%s",
         webhook_url,
