@@ -2,7 +2,7 @@
 뷰티 > 스킨케어 경로로 이동 후 상품 10개 크롤링 테스트
 """
 from utils.logger import logger
-from parsers.musinsa.crawler import crawl_from_main
+from musinsa_parser.product_crawler import crawl_from_main
 
 def test_crawl_beauty_skincare():
     """뷰티 > 스킨케어 페이지에서 상품 10개 크롤링 테스트"""

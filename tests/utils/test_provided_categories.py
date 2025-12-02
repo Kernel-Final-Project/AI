@@ -1,8 +1,8 @@
 """
 사용자가 제공한 카테고리 경로로 크롤링 테스트
 """
-from parsers.ssadagu.crawler import crawl_from_main
-from parsers.ssadagu.categories import USER_PROVIDED_CATEGORIES
+from ssadagu_parser.crawler import crawl_from_main
+from ssadagu_parser.categories import USER_PROVIDED_CATEGORIES
 
 if __name__ == "__main__":
     print("=" * 60)

@@ -2,7 +2,8 @@
 카테고리 네비게이션 크롤링 테스트 스크립트
 """
 import sys
-from scraper.category_navigator import crawl_all_categories
+# TODO: category_navigator는 parsers/base에 없음. 별도 구현 필요 또는 주석 처리
+# from scraper.category_navigator import crawl_all_categories
 from utils.logger import logger
 
 # 로그 레벨을 WARNING으로 설정

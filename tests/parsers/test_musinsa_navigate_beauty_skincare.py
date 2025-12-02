@@ -7,7 +7,8 @@ import time
 
 from utils.logger import logger
 from auto_posting.browser_utils import setup_browser
-from parsers.musinsa.crawler import navigate_to_category
+# TODO: navigate_to_category는 musinsa_parser에 없음
+# from musinsa_parser.category_crawler import navigate_to_category
 
 def test_navigate_beauty_skincare():
     """뷰티 > 스킨케어 경로로 이동 테스트"""
@@ -36,7 +37,8 @@ def test_navigate_beauty_skincare():
             
             # 상품 목록이 있는지 확인
             try:
-                from parsers.musinsa.config import MUSINSA_SELECTORS
+                # TODO: MUSINSA_SELECTORS는 musinsa_parser에 없음
+                # from musinsa_parser.config import MUSINSA_SELECTORS
                 product_list = driver.find_element(By.CSS_SELECTOR, MUSINSA_SELECTORS["product_list"])
                 logger.info(f"  상품 목록 컨테이너 발견")
             except:

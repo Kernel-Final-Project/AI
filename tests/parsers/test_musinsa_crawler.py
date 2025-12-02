@@ -1,7 +1,7 @@
 """
 무신사 크롤러 테스트 스크립트
 """
-from parsers.musinsa.crawler import crawl_from_main, crawl_category
+from musinsa_parser.product_crawler import crawl_from_main, crawl_category_page as crawl_category
 from utils.logger import logger
 
 

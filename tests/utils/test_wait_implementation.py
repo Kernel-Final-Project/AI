@@ -1,7 +1,7 @@
 """
 Implicit/Explicit Wait 구현 테스트
 """
-from parsers.base.html_extractor import _extract_with_selenium
+from scraper.html_extractor import _extract_with_selenium
 from utils.logger import logger
 
 

@@ -2,7 +2,7 @@
 올바른 카테고리 경로만 필터링
 """
 import json
-from parsers.ssadagu.categories import USER_PROVIDED_CATEGORIES
+from ssadagu_parser.categories import USER_PROVIDED_CATEGORIES
 
 # 올바른 1단계 카테고리 목록
 VALID_LEVEL1 = [

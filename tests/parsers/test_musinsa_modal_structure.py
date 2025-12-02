@@ -9,7 +9,9 @@ from selenium.webdriver.common.action_chains import ActionChains
 import time
 
 from auto_posting.browser_utils import setup_browser
-from parsers.musinsa.config import BASE_URL, MUSINSA_SELECTORS
+from musinsa_parser.config import BASE_URL
+# TODO: MUSINSA_SELECTORS는 musinsa_parser에 없음. XPath 사용
+# from musinsa_parser.config import MUSINSA_SELECTORS
 
 
 def inspect_modal_structure():

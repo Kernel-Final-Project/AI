@@ -1,7 +1,7 @@
 """
 싸다구 사이트의 모든 카테고리 경로 찾기
 """
-from parsers.ssadagu.category_finder import find_all_category_paths, print_category_paths
+from ssadagu_parser.category_finder import find_all_category_paths, print_category_paths
 
 if __name__ == "__main__":
     print("싸다구 사이트의 모든 카테고리 경로를 찾는 중...")

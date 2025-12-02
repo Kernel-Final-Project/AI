@@ -1,7 +1,7 @@
 """
 사용자가 지정한 카테고리 경로로 크롤링 테스트
 """
-from parsers.ssadagu.crawler import crawl_from_main
+from ssadagu_parser.crawler import crawl_from_main
 
 if __name__ == "__main__":
     print("=" * 60)

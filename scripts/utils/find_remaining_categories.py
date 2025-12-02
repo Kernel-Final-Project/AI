@@ -11,9 +11,9 @@ import time
 
 from utils.logger import logger
 from auto_posting.browser_utils import setup_browser
-from parsers.ssadagu.crawler import open_ssadagu_menu
-from parsers.ssadagu.config import BASE_URL
-from parsers.ssadagu.categories import USER_PROVIDED_CATEGORIES
+from ssadagu_parser.crawler import open_ssadagu_menu
+from ssadagu_parser.config import BASE_URL
+from ssadagu_parser.categories import USER_PROVIDED_CATEGORIES
 
 
 def find_all_categories_by_pattern() -> List[List[str]]:

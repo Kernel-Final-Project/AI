@@ -1,7 +1,8 @@
 """
 무신사 카테고리 탐지 테스트 스크립트
 """
-from parsers.musinsa.category_finder import find_all_category_paths, print_category_paths
+# TODO: category_finder 기능이 musinsa_parser에 없음. parsers/musinsa/category_finder.py 참고 필요
+# from musinsa_parser.category_crawler import find_all_category_paths, print_category_paths
 from utils.logger import logger
 import json
 from pathlib import Path

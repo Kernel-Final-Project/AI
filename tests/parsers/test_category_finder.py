@@ -12,8 +12,8 @@ import json
 
 from utils.logger import logger
 from auto_posting.browser_utils import setup_browser
-from parsers.ssadagu.crawler import open_ssadagu_menu
-from parsers.ssadagu.config import BASE_URL
+from ssadagu_parser.crawler import open_ssadagu_menu
+from ssadagu_parser.config import BASE_URL
 
 
 def test_category_detection():
