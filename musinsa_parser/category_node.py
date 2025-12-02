@@ -14,12 +14,16 @@ class CategoryNode:
     name: str
     category_id: Optional[str] = None
     url: Optional[str] = None
+    xpath: Optional[str] = None
+    node_type: str = "unknown"  # root, main, sub, leaf
+    depth: int = 0
     children: List['CategoryNode'] = field(default_factory=list)
     parent: Optional['CategoryNode'] = None
     
     def add_child(self, child: 'CategoryNode'):
         """하위 카테고리 추가"""
         child.parent = self
+        child.depth = self.depth + 1
         self.children.append(child)
     
     def get_path(self) -> List[str]:
@@ -27,7 +31,8 @@ class CategoryNode:
         path = []
         node = self
         while node:
-            path.insert(0, node.name)
+            if node.name != "root":
+                path.insert(0, node.name)
             node = node.parent
         return path
     
@@ -45,17 +50,24 @@ class CategoryNode:
         
         return None
     
+    def is_leaf(self) -> bool:
+        """리프 노드인지 확인"""
+        return len(self.children) == 0
+    
     def to_dict(self) -> Dict:
         """딕셔너리로 변환"""
         return {
             "name": self.name,
             "category_id": self.category_id,
             "url": self.url,
+            "xpath": self.xpath,
+            "node_type": self.node_type,
+            "depth": self.depth,
             "children": [child.to_dict() for child in self.children]
         }
     
     def __repr__(self):
-        return f"CategoryNode(name='{self.name}', children={len(self.children)})"
+        return f"CategoryNode(name='{self.name}', depth={self.depth}, children={len(self.children)})"
 
 
 class CategoryTree:
@@ -63,14 +75,14 @@ class CategoryTree:
     카테고리 트리 관리 클래스
     """
     def __init__(self):
-        self.root = CategoryNode("root")
+        self.root = CategoryNode("root", node_type="root")
         self._node_map: Dict[str, CategoryNode] = {}
     
     def add_category(self, path: List[str], category_id: Optional[str] = None, url: Optional[str] = None):
         """카테고리 경로 추가"""
         current = self.root
         
-        for name in path:
+        for i, name in enumerate(path):
             # 이미 존재하는 노드 찾기
             found = None
             for child in current.children:
@@ -80,7 +92,11 @@ class CategoryTree:
             
             if not found:
                 # 새 노드 생성
-                found = CategoryNode(name=name)
+                found = CategoryNode(
+                    name=name,
+                    node_type="main" if i == 0 else "sub",
+                    depth=i + 1
+                )
                 current.add_child(found)
             
             current = found
@@ -90,6 +106,7 @@ class CategoryTree:
             current.category_id = category_id
         if url:
             current.url = url
+        current.node_type = "leaf"
     
     def find_by_path(self, path: List[str]) -> Optional[CategoryNode]:
         """경로로 카테고리 찾기"""
@@ -114,4 +131,3 @@ class CategoryTree:
     def to_dict(self) -> Dict:
         """딕셔너리로 변환"""
         return self.root.to_dict()
-
