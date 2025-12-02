@@ -7,7 +7,7 @@ from datetime import datetime
 from typing import List, Dict
 from pathlib import Path
 
-from parsers.ssadagu.crawler import crawl_from_main
+from ssadagu_parser.crawler import crawl_from_main
 from utils.logger import logger
 
 

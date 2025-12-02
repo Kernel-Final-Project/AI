@@ -9,8 +9,11 @@ import time
 
 from utils.logger import logger
 from auto_posting.browser_utils import setup_browser
-from parsers.musinsa.crawler import open_musinsa_menu
-from parsers.musinsa.config import BASE_URL, MUSINSA_SELECTORS
+# TODO: open_musinsa_menu는 musinsa_parser에 없음. open_musinsa_category_panel 사용 필요
+# from musinsa_parser.category_crawler import open_musinsa_category_panel as open_musinsa_menu
+from musinsa_parser.config import BASE_URL
+# TODO: MUSINSA_SELECTORS는 musinsa_parser에 없음. XPath 사용
+# from musinsa_parser.config import MUSINSA_SELECTORS
 
 def analyze_left_menu_detailed():
     driver = None

@@ -1,7 +1,7 @@
 """
 싸다구 크롤러 테스트
 """
-from parsers.ssadagu.crawler import crawl_from_main, crawl_category
+from ssadagu_parser.crawler import crawl_from_main, crawl_category
 
 if __name__ == "__main__":
     print("=" * 60)

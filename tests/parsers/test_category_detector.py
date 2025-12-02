@@ -1,20 +1,20 @@
 """
 카테고리 탐지 기능 테스트 스크립트
 """
-from parsers.base.html_extractor import extract_html
-from parsers.base.html_category_detector import (
+from scraper.html_extractor import extract_html
+from scraper.html_category_detector import (
     find_category_candidates, 
     filter_clickable_elements,
     detect_hover_needed
 )
-from parsers.base.category_interaction import (
+from scraper.category_interaction import (
     hover_element, 
     hover_and_wait_for_submenu,
     find_selenium_element,
     click_element
 )
-from parsers.base.category_clicker import click_category_with_fallback
-from parsers.base.html_extractor import (
+from scraper.category_clicker import click_category_with_fallback
+from scraper.html_extractor import (
     handle_event_banner_and_navigate_to_main,
     detect_event_banner,
     is_main_page
@@ -1403,7 +1403,7 @@ def test_category_click_with_fallback():
             
             # 이벤트 배너 처리
             print("  → 이벤트 배너 확인 및 처리 중...")
-            from parsers.base.html_extractor import handle_event_banner_and_navigate_to_main
+            from scraper.html_extractor import handle_event_banner_and_navigate_to_main
             success, final_url = handle_event_banner_and_navigate_to_main(driver, url)
             if success:
                 print(f"  ✅ 메인 페이지로 이동 성공: {final_url}")
@@ -1551,7 +1551,7 @@ def test_category_tree_extraction():
             
             # 이벤트 배너 처리
             print("  → 이벤트 배너 확인 및 처리 중...")
-            from parsers.base.html_extractor import handle_event_banner_and_navigate_to_main
+            from scraper.html_extractor import handle_event_banner_and_navigate_to_main
             success, final_url = handle_event_banner_and_navigate_to_main(driver, url)
             if success:
                 print(f"  ✅ 메인 페이지로 이동 성공: {final_url}")
@@ -1562,13 +1562,13 @@ def test_category_tree_extraction():
             
             # SSR/CSR 판별
             print("  → SSR/CSR 판별 중...")
-            from parsers.base.ssr_csr_checker import check_ssr_csr
+            from scraper.ssr_csr_checker import check_ssr_csr
             check_result = check_ssr_csr(url)
             print(f"  ✅ 렌더링 타입: {check_result.rendering_type} (신뢰도: {check_result.confidence:.2f})")
             
             # 카테고리 트리 추출
             print("  → 카테고리 트리 추출 중...")
-            from parsers.base.category_tree_extractor import build_full_category_tree, build_category_tree_csr
+            from scraper.category_tree_extractor import build_full_category_tree, build_category_tree_csr
             
             if check_result.rendering_type in ["CSR", "HYBRID"]:
                 # CSR이면 Selenium 직접 사용

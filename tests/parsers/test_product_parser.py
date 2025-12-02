@@ -5,9 +5,10 @@
 
 import sys
 import json
-from parsers.base.html_extractor import load_html_ssr, load_html_csr
-from parsers.base.product_parser import parse_products
-from parsers.base.ssr_csr_checker import check_ssr_csr
+from scraper.html_extractor import load_html_ssr, load_html_csr
+# TODO: product_parser는 scraper에 없음. 별도 구현 필요 또는 주석 처리
+# from scraper.product_parser import parse_products
+from scraper.ssr_csr_checker import check_ssr_csr
 from utils.logger import logger
 
 # 로그 레벨을 WARNING으로 설정 (INFO 메시지 숨김)

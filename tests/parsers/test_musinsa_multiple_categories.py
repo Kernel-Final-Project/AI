@@ -3,13 +3,14 @@
 하드코딩된 경로 없이 카테고리 이름만으로 크롤링 테스트
 """
 from utils.logger import logger
-from parsers.musinsa.crawler import crawl_from_main
-from parsers.musinsa.category_finder import (
-    find_category_path_by_names,
-    load_category_paths,
-    save_category_paths,
-    find_all_category_paths
-)
+from musinsa_parser.product_crawler import crawl_from_main
+# TODO: category_finder 기능이 musinsa_parser에 없음. parsers/musinsa/category_finder.py 참고 필요
+# from musinsa_parser.category_crawler import (
+#     find_category_path_by_names,
+#     load_category_paths,
+#     save_category_paths,
+#     find_all_category_paths
+# )
 
 
 def print_summary(results: list):

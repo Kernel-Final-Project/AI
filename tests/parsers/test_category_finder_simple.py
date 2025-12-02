@@ -1,7 +1,7 @@
 """
 간단한 카테고리 탐지 테스트 - 수정된 로직 확인
 """
-from parsers.ssadagu.category_finder import find_all_category_paths, print_category_paths
+from ssadagu_parser.category_finder import find_all_category_paths, print_category_paths
 import json
 
 def test_find_categories():
