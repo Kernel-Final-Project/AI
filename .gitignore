@@ -69,3 +69,6 @@ htmlcov/
 .dmypy.json
 dmypy.json
 
+# Documentation
+docs/
+

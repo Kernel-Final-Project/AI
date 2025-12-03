@@ -1,5 +1,5 @@
 """
-AI 콘텐츠 생성 엔진
+본문 생성 모듈
 AI2 담당
 """
 from typing import Dict, Optional
