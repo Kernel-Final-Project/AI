@@ -118,7 +118,7 @@ def generate_with_prompt(
     
     Args:
         prompt_name: 프롬프트 파일명 (확장자 제외, 예: "title_prompt")
-        user_data: user_prompt에 삽입할 데이터 딕셔너리
+        user_data: 프롬프트에 삽입할 데이터 딕셔너리 (placeholder 치환용)
         model: 사용할 모델 (기본값: gpt-4o-mini)
         temperature: 온도 설정 (0.0 ~ 2.0, 기본값: 0.7)
         max_retries: 최대 재시도 횟수 (기본값: 3)
@@ -127,7 +127,17 @@ def generate_with_prompt(
         생성된 텍스트 (실패 시 None)
     """
     system_prompt = load_prompt(prompt_name)
-    user_prompt = "\n".join([f"{k}: {v}" for k, v in user_data.items()])
+    
+    # placeholder 치환 (예: {keyword} → 실제 값)
+    try:
+        system_prompt = system_prompt.format(**user_data)
+    except KeyError as e:
+        logger.warning(f"프롬프트 placeholder 치환 실패: {e}. 원본 프롬프트 사용")
+    except Exception as e:
+        logger.warning(f"프롬프트 치환 중 오류: {e}. 원본 프롬프트 사용")
+    
+    # user_prompt는 빈 문자열로 설정 (system_prompt에 모든 정보 포함)
+    user_prompt = ""
     
     return call_gpt(
         system_prompt=system_prompt,
