@@ -1,5 +1,6 @@
 # Web Scraping
 selenium>=4.15.0
+undetected-chromedriver>=3.5.5
 beautifulsoup4>=4.12.0
 requests>=2.31.0
 pytrends>=4.9.2
@@ -27,3 +28,4 @@ python-dotenv>=1.0.0
 
 # Utilities
 python-dateutil>=2.8.0
+setuptools>=65.0.0
