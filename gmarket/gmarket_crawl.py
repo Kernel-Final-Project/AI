@@ -16,6 +16,9 @@ import time
 import re
 import json
 import random
+import tempfile
+import shutil
+import atexit
 from pathlib import Path
 from datetime import datetime
 from typing import List, Dict
@@ -124,6 +127,10 @@ CATEGORY_PATHS: List[list[str]] = [
 # 드라이버 생성
 # ------------------------------------------------------------
 def setup_driver(headless=False):
+    # 작업 디렉터리에 프로필이 쌓이지 않도록 OS 임시 디렉터리 사용
+    profile_dir = Path(tempfile.mkdtemp(prefix="gmarket-chrome-profile-"))
+    atexit.register(shutil.rmtree, profile_dir, ignore_errors=True)
+
     def make_options():
         opt = uc.ChromeOptions()
         opt.add_argument("--disable-blink-features=AutomationControlled")
@@ -133,6 +140,8 @@ def setup_driver(headless=False):
         opt.add_argument("--no-sandbox")
         opt.add_argument("--disable-dev-shm-usage")
         opt.add_argument("--lang=ko-KR")
+        opt.add_argument(f"--user-data-dir={profile_dir}")
+        opt.add_argument(f"--disk-cache-dir={profile_dir / 'cache'}")
 
         if headless:
             opt.add_argument("--headless=new")

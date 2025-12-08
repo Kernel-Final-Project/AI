@@ -9,6 +9,12 @@ webdriver-manager>=4.0.0
 # AI/LLM
 openai>=1.45.0
 
+# Messaging
+pika>=1.3.2
+
+# Validation
+pydantic>=2.7.0
+
 # Data Processing
 pandas>=2.1.0
 
