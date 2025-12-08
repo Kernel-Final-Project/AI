@@ -6,3 +6,8 @@ fastapi
 uvicorn
 openai
 python-dotenv
+# 기존 requirements.txt에 추가
+
+# Playwright (브라우저 자동화) - macOS ARM 호환성 개선
+playwright==1.48.0
+# 설치 후 실행: playwright install chromium

@@ -4,7 +4,7 @@ from pathlib import Path
 from selenium import webdriver
 from selenium.webdriver.chrome.service import Service
 from webdriver_manager.chrome import ChromeDriverManager
-
+import undetected_chromedriver as uc
 
 class DriverFactory:
     """설정 가능한 옵션으로 Chrome WebDriver를 생성한다."""
@@ -23,6 +23,9 @@ class DriverFactory:
         """옵션을 구성하고 WebDriver 인스턴스를 반환한다."""
         options = webdriver.ChromeOptions()
         options.add_argument("--start-maximized")
+
+        options.add_argument('--disable-blink-features=AutomationControlled')
+        # Chrome 143+에서는 excludeSwitches/useAutomationExtension 옵션이 거부되므로 제거
         if self.headless:
             options.add_argument("--headless=new")
 
@@ -31,10 +34,9 @@ class DriverFactory:
         if self.driver_path and self.driver_path.is_file():
             service = Service(str(self.driver_path))
         else:
-            self.cache_dir.mkdir(parents=True, exist_ok=True)
-            manager = ChromeDriverManager(path=str(self.cache_dir))
+            manager = ChromeDriverManager()
             cached_driver_path = manager.install()
             service = Service(cached_driver_path)
 
-        driver = webdriver.Chrome(service=service, options=options)
+        driver = uc.Chrome(options=options, use_subprocess=True)
         return driver

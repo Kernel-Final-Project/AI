@@ -9,6 +9,11 @@
 - `generate_content/`: 최종 상품 정보를 바탕으로 블로그용 제목과 Markdown 본문을 생성합니다.
 
 ### 준비 사항
+[가상환경 생성 방법]
+python -m venv venv
+source venv/bin/activate
+pip install -r requirements.txt
+pip install openai python-dotenv
 1. Python 3.10+ 환경과 필요한 라이브러리 설치 (예: `pip install -r keywordCrawler/requirements.txt` + `pip install openai python-dotenv`).
 2. Chrome/Chromedriver 또는 Selenium이 접근 가능한 브라우저 준비.
 3. OpenAI API Key를 환경 변수 `OPENAI_API_KEY` 또는 루트 `.env`에 저장.

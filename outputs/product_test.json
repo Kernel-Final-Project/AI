@@ -1,0 +1,21 @@
+{
+  "metadata": {
+    "started_at": "2025-12-05T16:51:40.770562",
+    "base_url": "https://www.coupang.com/vp/products/6824755365",
+    "keyword": "니트",
+    "failed_at": "2025-12-05T16:51:58.224489"
+  },
+  "steps": {
+    "url_refine": {
+      "original_url": "https://www.coupang.com/vp/products/6824755365",
+      "keyword": "니트",
+      "refined_url": "https://www.coupang.com/np/search?q=%EB%8B%88%ED%8A%B8",
+      "shopping_mall": "쿠팡"
+    },
+    "history_check": {
+      "excluded_count": 16
+    }
+  },
+  "status": "failed",
+  "error": "Message: invalid argument: cannot parse capability: goog:chromeOptions\nfrom invalid argument: unrecognized chrome option: excludeSwitches\nStacktrace:\n0   undetected_chromedriver             0x000000010301d568 undetected_chromedriver + 6595944\n1   undetected_chromedriver             0x0000000103014c1a undetected_chromedriver + 6560794\n2   undetected_chromedriver             0x0000000102a3dc3b undetected_chromedriver + 437307\n3   undetected_chromedriver             0x0000000102a6aea1 undetected_chromedriver + 622241\n4   undetected_chromedriver             0x0000000102a67491 undetected_chromedriver + 607377\n5   undetected_chromedriver             0x0000000102ac203d undetected_chromedriver + 979005\n6   undetected_chromedriver             0x0000000102ac19bf undetected_chromedriver + 977343\n7   undetected_chromedriver             0x0000000102ac3518 undetected_chromedriver + 984344\n8   undetected_chromedriver             0x0000000102ac32cc undetected_chromedriver + 983756\n9   undetected_chromedriver             0x0000000102a81fc7 undetected_chromedriver + 716743\n10  undetected_chromedriver             0x0000000102a82c91 undetected_chromedriver + 720017\n11  undetected_chromedriver             0x0000000102fda691 undetected_chromedriver + 6321809\n12  undetected_chromedriver             0x0000000102fdeaf0 undetected_chromedriver + 6339312\n13  undetected_chromedriver             0x0000000102fb5263 undetected_chromedriver + 6169187\n14  undetected_chromedriver             0x0000000102fdf565 undetected_chromedriver + 6341989\n15  undetected_chromedriver             0x0000000102fa3ee1 undetected_chromedriver + 6098657\n16  undetected_chromedriver             0x0000000103001ab8 undetected_chromedriver + 6482616\n17  undetected_chromedriver             0x0000000103001c73 undetected_chromedriver + 6483059\n18  undetected_chromedriver             0x000000010301481c undetected_chromedriver + 6559772\n19  libsystem_pthread.dylib             0x00007ff814160253 _pthread_start + 99\n20  libsystem_pthread.dylib             0x00007ff81415bbef thread_start + 15\n"
+}
