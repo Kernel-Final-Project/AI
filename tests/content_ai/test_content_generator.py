@@ -14,8 +14,8 @@ def test_generate_body():
     print("=" * 60)
     
     # 테스트 데이터
-    keyword = "요가매트"
-    product_info = "싸다구 프리미엄 요가매트, 두께 10mm, 미끄럼 방지"
+    keyword = "ASUS vivobook"
+    product_info = "ASUS 비보북 노트북, 15인치, 인텔 i5, 8GB RAM"
     
     print(f"\n[테스트 데이터]")
     print(f"키워드: {keyword}")
@@ -59,9 +59,14 @@ def test_generate_body():
         
         # 검증 테스트
         print(f"\n[4] 검증 테스트")
-        is_valid = validate_body(body)
+        # 요약된 본문인지 확인 (1800~2100자 범위면 요약된 것으로 간주)
+        is_summarized = 1800 <= text_length <= 2100 and text_length > 1800
+        is_valid = validate_body(body, is_summarized=is_summarized)
         if is_valid:
-            print("✅ 본문 검증 통과")
+            if is_summarized:
+                print(f"✅ 요약된 본문 검증 통과 (1800~2100자 범위)")
+            else:
+                print("✅ 본문 검증 통과 (1500~1800자 범위)")
         else:
             print("❌ 본문 검증 실패")
             return False
@@ -100,21 +105,21 @@ def test_validate_body():
     
     # 케이스 1: 정상 본문 (1500~1800자)
     print("\n[케이스 1] 정상 본문 (1500~1800자)")
-    body1 = "<h2>요가매트 개요</h2><p>" + "가" * 1600 + "</p>"
+    body1 = "<h2>ASUS vivobook 개요</h2><p>" + "가" * 1600 + "</p>"
     is_valid1 = validate_body(body1)
     print(f"결과: {'✅ 검증 통과' if is_valid1 else '❌ 검증 실패'}")
     assert is_valid1, "정상 본문은 검증 통과해야 함"
     
     # 케이스 2: 글자수 부족 (1500자 미만)
     print("\n[케이스 2] 글자수 부족 (1500자 미만)")
-    body2 = "<h2>요가매트 개요</h2><p>" + "가" * 1400 + "</p>"
+    body2 = "<h2>ASUS vivobook 개요</h2><p>" + "가" * 1400 + "</p>"
     is_valid2 = validate_body(body2)
     print(f"결과: {'❌ 검증 실패 (예상)' if not is_valid2 else '✅ 검증 통과 (예상과 다름)'}")
     assert not is_valid2, "1500자 미만은 검증 실패해야 함"
     
     # 케이스 3: 글자수 초과 (1800자 초과)
     print("\n[케이스 3] 글자수 초과 (1800자 초과)")
-    body3 = "<h2>요가매트 개요</h2><p>" + "가" * 1900 + "</p>"
+    body3 = "<h2>ASUS vivobook 개요</h2><p>" + "가" * 1900 + "</p>"
     is_valid3 = validate_body(body3)
     print(f"결과: {'❌ 검증 실패 (예상)' if not is_valid3 else '✅ 검증 통과 (예상과 다름)'}")
     assert not is_valid3, "1800자 초과는 검증 실패해야 함"

@@ -50,6 +50,16 @@ def generate_body(keyword: str, title: str, outline: Dict, product_info: str = "
                     time.sleep(1)
                 continue
             
+            # GPT 원본 응답 로그 (처음 500자)
+            logger.info(f"GPT 원본 응답 (시도 {attempt+1}):\n{response[:500]}...")
+            
+            # 본문 상세 정보 로그
+            text_only = re.sub(r'<[^>]+>', '', response)
+            text_length = len(text_only.strip())
+            h2_count = response.count("<h2>") + response.count("<h2 ")
+            h3_count = response.count("<h3>") + response.count("<h3 ")
+            logger.info(f"생성된 본문 상세: 텍스트 {text_length}자, 전체 {len(response)}자, h2 {h2_count}개, h3 {h3_count}개")
+            
             # 본문 검증
             if validate_body(response):
                 logger.info(f"본문 생성 완료: {len(response)}자")
@@ -63,9 +73,38 @@ def generate_body(keyword: str, title: str, outline: Dict, product_info: str = "
                     logger.info(f"본문 글자수 초과 ({text_length}자). 요약 시도...")
                     summarized = summarize_body(response)
                     if summarized:
-                        # summarize_body 내부에서 이미 2100~2300자 검증 완료
-                        logger.info(f"요약 완료: {len(summarized)}자")
-                        return summarized
+                        # 요약 결과 검증 (1800~2100자 범위)
+                        summarized_text_only = re.sub(r'<[^>]+>', '', summarized)
+                        summarized_length = len(summarized_text_only.strip())
+                        
+                        if 1800 <= summarized_length <= 2100:
+                            # 요약 성공: 1800~2100자 범위
+                            if validate_body(summarized, is_summarized=True):
+                                logger.info(f"요약 완료: {summarized_length}자 (1800~2100자 범위)")
+                                return summarized
+                            else:
+                                logger.warning(f"요약된 본문 검증 실패. 재시도 ({attempt+1}/{max_retries})")
+                        elif summarized_length < 1800:
+                            # 요약 후 1800자 미만: 그대로 반환 (재생성하지 않음)
+                            logger.info(f"요약 완료: {summarized_length}자 (1800자 미만이지만 그대로 반환)")
+                            return summarized
+                        else:
+                            # 요약 후 2100자 초과: 재요약 시도
+                            logger.warning(f"요약 후 글자수 초과 ({summarized_length}자). 재요약 시도...")
+                            re_summarized = summarize_body(summarized)
+                            if re_summarized:
+                                re_summarized_text_only = re.sub(r'<[^>]+>', '', re_summarized)
+                                re_summarized_length = len(re_summarized_text_only.strip())
+                                if 1800 <= re_summarized_length <= 2100:
+                                    if validate_body(re_summarized, is_summarized=True):
+                                        logger.info(f"재요약 완료: {re_summarized_length}자")
+                                        return re_summarized
+                                    else:
+                                        logger.warning(f"재요약된 본문 검증 실패. 재시도 ({attempt+1}/{max_retries})")
+                                else:
+                                    logger.warning(f"재요약 후에도 범위 벗어남 ({re_summarized_length}자). 재시도 ({attempt+1}/{max_retries})")
+                            else:
+                                logger.warning(f"재요약 실패. 재시도 ({attempt+1}/{max_retries})")
                     else:
                         logger.warning(f"요약 실패. 재시도 ({attempt+1}/{max_retries})")
                 else:
@@ -116,15 +155,15 @@ def summarize_body(content: str, max_retries: int = 2) -> Optional[str]:
                     time.sleep(1)
                 continue
             
-            # 요약 결과 검증 (2100~2300자)
+            # 요약 결과 검증 (1800~2100자)
             text_only = re.sub(r'<[^>]+>', '', response)
             text_length = len(text_only.strip())
             
-            if 2100 <= text_length <= 2300:
+            if 1800 <= text_length <= 2100:
                 logger.info(f"요약 완료: {text_length}자")
                 return response
             else:
-                logger.warning(f"요약 글자수 범위 벗어남: {text_length}자 (요구: 2100~2300자). 재시도 ({attempt+1}/{max_retries})")
+                logger.warning(f"요약 글자수 범위 벗어남: {text_length}자 (요구: 1800~2100자). 재시도 ({attempt+1}/{max_retries})")
                 if attempt < max_retries - 1:
                     time.sleep(1)
                 continue
@@ -139,12 +178,13 @@ def summarize_body(content: str, max_retries: int = 2) -> Optional[str]:
     return None
 
 
-def validate_body(body: str) -> bool:
+def validate_body(body: str, is_summarized: bool = False) -> bool:
     """
     생성된 본문 검증
     
     Args:
         body: 생성된 본문 HTML
+        is_summarized: 요약된 본문인지 여부 (기본값: False)
         
     Returns:
         검증 통과 여부
@@ -158,21 +198,35 @@ def validate_body(body: str) -> bool:
         logger.warning("본문에 h2 태그가 없습니다.")
         return False
     
-    # 2. 글자수 검증 (1500~1800자)
+    # 2. 글자수 검증
     # HTML 태그 제거하고 순수 텍스트만 계산
     text_only = re.sub(r'<[^>]+>', '', body)
     text_length = len(text_only.strip())
     
-    if text_length < 1500:
-        logger.warning(f"본문 글자수 부족: {text_length}자 (요구: 1500자 이상)")
-        return False
-    
-    if text_length > 1800:
-        logger.warning(f"본문 글자수 초과: {text_length}자 (요구: 1800자 이하)")
-        return False
-    
-    logger.debug(f"본문 검증 통과: {text_length}자")
-    return True
+    if is_summarized:
+        # 요약된 본문: 1800~2100자 범위
+        if text_length < 1800:
+            logger.warning(f"요약된 본문 글자수 부족: {text_length}자 (요구: 1800자 이상)")
+            return False
+        
+        if text_length > 2100:
+            logger.warning(f"요약된 본문 글자수 초과: {text_length}자 (요구: 2100자 이하)")
+            return False
+        
+        logger.debug(f"요약된 본문 검증 통과: {text_length}자")
+        return True
+    else:
+        # 일반 본문: 1500~1800자 범위
+        if text_length < 1500:
+            logger.warning(f"본문 글자수 부족: {text_length}자 (요구: 1500자 이상)")
+            return False
+        
+        if text_length > 1800:
+            logger.warning(f"본문 글자수 초과: {text_length}자 (요구: 1800자 이하)")
+            return False
+        
+        logger.debug(f"본문 검증 통과: {text_length}자")
+        return True
 
 
 def generate_image(keyword: str, title: str = "") -> Optional[str]:

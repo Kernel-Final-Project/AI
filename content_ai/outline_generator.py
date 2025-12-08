@@ -44,8 +44,23 @@ def generate_outlines(keyword: str, title: str, product_info: str = "", max_retr
                     time.sleep(1)
                 continue
             
+            # GPT 원본 응답 로그
+            logger.info(f"GPT 원본 응답 (시도 {attempt+1}):\n{response[:1000]}...")
+            
             # JSON 파싱
             outline = parse_outline_from_response(response)
+            
+            # 파싱된 아웃라인 상세 로그
+            if outline and "h2" in outline:
+                logger.info(f"파싱된 아웃라인: h2 {len(outline['h2'])}개")
+                for i, h2_item in enumerate(outline["h2"], 1):
+                    h2_title = h2_item.get("title", "")
+                    h3_list = h2_item.get("h3", [])
+                    logger.info(f"  h2[{i}]: {h2_title} (h3: {len(h3_list)}개)")
+                    for j, h3_title in enumerate(h3_list, 1):
+                        logger.info(f"    h3[{j}]: {h3_title}")
+            else:
+                logger.warning(f"아웃라인 파싱 실패 또는 구조 오류")
             
             # 아웃라인 검증
             if validate_outline(outline, keyword):
@@ -56,9 +71,14 @@ def generate_outlines(keyword: str, title: str, product_info: str = "", max_retr
                 h2_count = len(outline.get('h2', [])) if outline else 0
                 logger.warning(f"아웃라인 검증 실패 (h2: {h2_count}개). 재시도 ({attempt+1}/{max_retries})")
                 if outline and "h2" in outline:
-                    # 첫 번째 h2 제목 길이 확인
-                    first_h2_title = outline["h2"][0].get("title", "") if outline["h2"] else ""
-                    logger.debug(f"첫 번째 h2 제목: '{first_h2_title}' ({len(first_h2_title)}자)")
+                    # 모든 h2 제목 상세 정보 출력
+                    for i, h2_item in enumerate(outline["h2"], 1):
+                        h2_title = h2_item.get("title", "")
+                        if keyword in h2_title:
+                            remaining = h2_title.replace(keyword, "").strip()
+                            logger.warning(f"  h2[{i}]: '{h2_title}' (전체: {len(h2_title)}자, 키워드 제외: {len(remaining)}자)")
+                        else:
+                            logger.warning(f"  h2[{i}]: '{h2_title}' (전체: {len(h2_title)}자, 키워드 미포함)")
             
             # 재시도 전 대기
             if attempt < max_retries - 1:
@@ -267,10 +287,22 @@ def validate_outline(outline: Dict, keyword: str) -> bool:
         
         h2_title = h2_item["title"]
         
-        # h2 제목 길이 검증 (6자 이상 16자 이하)
-        if len(h2_title) < 6 or len(h2_title) > 16:
-            logger.warning(f"h2[{i}] 제목이 6자 미만이거나 16자 초과입니다. (현재: {len(h2_title)}자, 요구: 6자 이상 16자 이하)")
-            return False
+        # h2 제목 길이 검증 (키워드 제외 나머지 텍스트 기준)
+        # 키워드 제외 나머지: 최대 12자까지 허용, 전체: 최대 20자까지 허용
+        if keyword in h2_title:
+            remaining_text = h2_title.replace(keyword, "").strip()
+            remaining_length = len(remaining_text)
+            if remaining_length > 12 or len(h2_title) > 20:
+                logger.warning(f"h2[{i}] 제목 길이 초과: '{h2_title}' (전체: {len(h2_title)}자, 키워드 제외: {remaining_length}자, 요구: 키워드 제외 12자 이하, 전체 20자 이하)")
+                return False
+            if len(h2_title) < 6:
+                logger.warning(f"h2[{i}] 제목이 너무 짧습니다: '{h2_title}' (전체: {len(h2_title)}자, 요구: 6자 이상)")
+                return False
+        else:
+            # 키워드가 없으면 전체 길이로 검증 (6자 이상 17자 이하)
+            if len(h2_title) < 6 or len(h2_title) > 17:
+                logger.warning(f"h2[{i}] 제목이 6자 미만이거나 17자 초과입니다. (현재: {len(h2_title)}자, 요구: 6자 이상 17자 이하)")
+                return False
         
         # 키워드 포함 여부 확인
         if keyword in h2_title:
@@ -293,10 +325,22 @@ def validate_outline(outline: Dict, keyword: str) -> bool:
                 logger.warning(f"h2[{i}].h3[{j}]가 문자열이 아닙니다.")
                 return False
             
-            # h3 제목 길이 검증 (6자 이상 16자 이하)
-            if len(h3_title) < 6 or len(h3_title) > 16:
-                logger.warning(f"h2[{i}].h3[{j}] 제목이 6자 미만이거나 16자 초과입니다. (현재: {len(h3_title)}자, 요구: 6자 이상 16자 이하)")
-                return False
+            # h3 제목 길이 검증 (키워드 제외 나머지 텍스트 기준)
+            # 키워드 제외 나머지: 최대 12자까지 허용, 전체: 최대 20자까지 허용
+            if keyword in h3_title:
+                remaining_text = h3_title.replace(keyword, "").strip()
+                remaining_length = len(remaining_text)
+                if remaining_length > 12 or len(h3_title) > 20:
+                    logger.warning(f"h2[{i}].h3[{j}] 제목 길이 초과: '{h3_title}' (전체: {len(h3_title)}자, 키워드 제외: {remaining_length}자, 요구: 키워드 제외 12자 이하, 전체 20자 이하)")
+                    return False
+                if len(h3_title) < 6:
+                    logger.warning(f"h2[{i}].h3[{j}] 제목이 너무 짧습니다: '{h3_title}' (전체: {len(h3_title)}자, 요구: 6자 이상)")
+                    return False
+            else:
+                # 키워드가 없으면 전체 길이로 검증 (6자 이상 17자 이하)
+                if len(h3_title) < 6 or len(h3_title) > 17:
+                    logger.warning(f"h2[{i}].h3[{j}] 제목이 6자 미만이거나 17자 초과입니다. (현재: {len(h3_title)}자, 요구: 6자 이상 17자 이하)")
+                    return False
     
     # 3. 키워드 포함 여부 검증 (2~4개 h2에 포함)
     if keyword_count < 2:

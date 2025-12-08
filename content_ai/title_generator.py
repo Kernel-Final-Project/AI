@@ -42,24 +42,52 @@ def generate_titles(keyword: str, product_info: str = "", max_retries: int = 3) 
                     time.sleep(1)  # 1초 대기 후 재시도
                 continue
             
+            # GPT 원본 응답 로그
+            logger.debug(f"GPT 원본 응답 (시도 {attempt+1}):\n{response[:500]}...")
+            
             # bullet 형태로 파싱
             titles = parse_titles_from_response(response)
+            logger.info(f"파싱된 제목 {len(titles)}개: {titles}")
             
             # 제목이 2개 이상이고, 최소 1개는 유효한지 검증
             if len(titles) >= 2:
-                # 유효한 제목 체크 (키워드 포함, 35자 이하)
-                valid_titles = [
+                # 유효한 제목 체크 (키워드 포함, 키워드 제외 나머지 텍스트 길이 제한)
+                # 키워드 제외 나머지 텍스트는 최대 25자까지 허용
+                valid_titles = []
+                for t in titles:
+                    if keyword in t:
+                        # 키워드를 제외한 나머지 텍스트 길이 계산
+                        remaining_text = t.replace(keyword, "").strip()
+                        remaining_length = len(remaining_text)
+                        # 키워드 제외 나머지가 25자 이하이고, 전체 길이는 40자 이하
+                        if remaining_length <= 25 and len(t) <= 40:
+                            valid_titles.append(t)
+                        else:
+                            logger.debug(f"제목 길이 초과: '{t}' (전체: {len(t)}자, 키워드 제외: {remaining_length}자)")
+                    else:
+                        logger.debug(f"키워드 미포함: '{t}'")
+                
+                # 무효한 제목도 로그에 기록
+                invalid_titles = [
                     t for t in titles 
-                    if keyword in t and len(t) <= 35
+                    if t not in valid_titles
                 ]
+                
+                if invalid_titles:
+                    logger.debug(f"무효한 제목 {len(invalid_titles)}개: {invalid_titles}")
                 
                 if valid_titles:
                     logger.info(f"제목 {len(titles)}개 생성 완료 (유효: {len(valid_titles)}개)")
+                    logger.info(f"유효한 제목 목록: {valid_titles}")
                     return titles
                 else:
-                    logger.warning(f"제목 {len(titles)}개 생성되었으나 유효한 제목 없음. 재시도 ({attempt+1}/{max_retries})")
+                    logger.warning(f"제목 {len(titles)}개 생성되었으나 유효한 제목 없음")
+                    logger.warning(f"생성된 제목 목록: {titles}")
+                    logger.warning(f"재시도 ({attempt+1}/{max_retries})")
             else:
-                logger.warning(f"제목 {len(titles)}개만 생성됨 (최소 2개 필요). 재시도 ({attempt+1}/{max_retries})")
+                logger.warning(f"제목 {len(titles)}개만 생성됨 (최소 2개 필요)")
+                logger.warning(f"생성된 제목 목록: {titles}")
+                logger.warning(f"재시도 ({attempt+1}/{max_retries})")
             
             # 재시도 전 대기
             if attempt < max_retries - 1:
@@ -136,22 +164,40 @@ def select_best_title(titles: List[str], keyword: str) -> str:
     for title in titles:
         score = 0
         
-        # 1. 길이 검증 (30-33자 최적)
-        title_len = len(title)
-        if 30 <= title_len <= 33:
-            score += 10
-        elif 25 <= title_len < 30 or 33 < title_len <= 35:
-            score += 5
-        elif title_len > 35:
-            score -= 10  # 35자 초과는 큰 감점
+        # 1. 길이 검증 (키워드 제외 나머지 텍스트 기준)
+        keyword_pos = title.find(keyword)
+        if keyword_pos != -1:
+            # 키워드를 제외한 나머지 텍스트 길이
+            remaining_text = title.replace(keyword, "").strip()
+            remaining_len = len(remaining_text)
+            
+            # 키워드 제외 나머지가 15-20자면 최적
+            if 15 <= remaining_len <= 20:
+                score += 10
+            elif 10 <= remaining_len < 15 or 20 < remaining_len <= 25:
+                score += 5
+            elif remaining_len > 25:
+                score -= 10  # 25자 초과는 큰 감점
+            elif remaining_len < 10:
+                score -= 5  # 너무 짧으면 감점
+        else:
+            # 키워드가 없으면 전체 길이로 평가
+            title_len = len(title)
+            if 30 <= title_len <= 33:
+                score += 10
+            elif 25 <= title_len < 30 or 33 < title_len <= 35:
+                score += 5
+            elif title_len > 35:
+                score -= 10
         
         # 2. 키워드 포함 여부 (앞 10자 이내가 최적)
-        keyword_pos = title.find(keyword)
         if keyword_pos != -1:
             if keyword_pos <= 10:
                 score += 10  # 앞 10자 이내
             else:
                 score += 5  # 다른 위치
+        else:
+            score -= 20  # 키워드 미포함은 큰 감점
         
         # 3. 금지어 검사
         has_forbidden = any(word in title for word in forbidden_words)
@@ -187,9 +233,13 @@ def select_best_title(titles: List[str], keyword: str) -> str:
     
     logger.info(f"최적 제목 선택: {best_title} (점수: {best_score}, 길이: {len(best_title)}자)")
     
-    # 상위 3개 제목 로그 출력
-    for i, (title, score) in enumerate(scored_titles[:3], 1):
-        logger.debug(f"  {i}. {title} (점수: {score})")
+    # 모든 제목의 점수 상세 로그 출력
+    logger.info(f"제목 점수 평가 결과 (총 {len(scored_titles)}개):")
+    for i, (title, score) in enumerate(scored_titles, 1):
+        title_len = len(title)
+        keyword_included = keyword in title
+        keyword_pos = title.find(keyword) if keyword_included else -1
+        logger.info(f"  {i}. [{score}점] {title} (길이: {title_len}자, 키워드 위치: {keyword_pos if keyword_pos >= 0 else '없음'})")
     
     return best_title
 
@@ -248,7 +298,10 @@ def generate_title(keyword: str, product_info: str = "", max_retries: int = 3) -
                     time.sleep(2)  # 2초 대기 후 재시도
                 continue
             
+            logger.info(f"제목 리스트 생성 성공: {len(titles)}개 제목")
+            
             # 2. 최적 제목 선택
+            logger.info("최적 제목 선택 시작...")
             best_title = select_best_title(titles, keyword)
             
             if not best_title:
@@ -258,12 +311,18 @@ def generate_title(keyword: str, product_info: str = "", max_retries: int = 3) -
                 continue
             
             # 3. 선택된 제목의 품질 검증
-            # 최소 점수 체크 (키워드 포함, 35자 이하)
-            if keyword in best_title and len(best_title) <= 35:
-                logger.info(f"제목 생성 성공: {best_title}")
-                return best_title
+            # 키워드 포함 여부와 키워드 제외 나머지 텍스트 길이 체크
+            if keyword in best_title:
+                remaining_text = best_title.replace(keyword, "").strip()
+                remaining_length = len(remaining_text)
+                if remaining_length <= 25 and len(best_title) <= 40:
+                    logger.info(f"제목 생성 성공: {best_title}")
+                    logger.info(f"제목 상세: 전체 {len(best_title)}자, 키워드 제외 {remaining_length}자")
+                    return best_title
+                else:
+                    logger.warning(f"선택된 제목이 품질 기준 미달 (전체: {len(best_title)}자, 키워드 제외: {remaining_length}자). 재시도 ({attempt+1}/{max_retries})")
             else:
-                logger.warning(f"선택된 제목이 품질 기준 미달. 재시도 ({attempt+1}/{max_retries})")
+                logger.warning(f"선택된 제목에 키워드 미포함. 재시도 ({attempt+1}/{max_retries})")
                 if attempt < max_retries - 1:
                     time.sleep(2)
                 continue
