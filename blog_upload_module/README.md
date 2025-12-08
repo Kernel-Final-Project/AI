@@ -56,7 +56,7 @@ blog-upload-module \
 - `--log-level`: `INFO`, `DEBUG` 등 로그 레벨
 - `--work-id`: 백엔드 워크 테이블 ID를 로그/웹훅에 포함
 - `--webhook-url`: 업로드 결과를 POST할 엔드포인트
-- `--webhook-token`: 웹훅 Authorization 헤더 값
+- `--webhook-token`: 웹훅 X-WEBHOOK-SECRET 헤더 값
 - `--webhook-timeout`: 웹훅 HTTP 요청 타임아웃(초). 기본값 5
 - `--emit-json`: 업로드 결과를 JSON 형태로 stdout에 출력
 

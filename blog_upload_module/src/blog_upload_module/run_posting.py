@@ -110,7 +110,7 @@ def run_cli():
     )
     parser.add_argument("--work-id", help="백엔드 워크 테이블 ID")
     parser.add_argument("--webhook-url", help="업로드 결과를 전송할 웹훅 URL")
-    parser.add_argument("--webhook-token", help="웹훅 Authorization 헤더 값")
+    parser.add_argument("--webhook-token", help="웹훅 X-WEBHOOK-SECRET 헤더 값")
     parser.add_argument(
         "--webhook-timeout",
         type=int,

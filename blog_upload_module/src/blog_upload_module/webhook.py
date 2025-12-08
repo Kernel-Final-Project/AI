@@ -28,7 +28,7 @@ def send_webhook(
     request.add_header("Content-Type", "application/json; charset=utf-8")
     request.add_header("Content-Length", str(len(data)))
     if token:
-        request.add_header("Authorization", token)
+        request.add_header("X-WEBHOOK-SECRET", token)
 
     try:
         with urllib.request.urlopen(request, timeout=timeout) as response:
