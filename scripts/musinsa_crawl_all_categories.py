@@ -5,9 +5,15 @@
 """
 import json
 import os
+import sys
 from datetime import datetime
 from typing import List, Dict
 import traceback
+
+# 프로젝트 루트 디렉토리를 Python 경로에 추가
+project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+if project_root not in sys.path:
+    sys.path.insert(0, project_root)
 
 from auto_posting.browser_utils import setup_browser
 from musinsa_parser.category_crawler import (

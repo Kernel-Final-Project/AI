@@ -58,3 +58,7 @@ def setup_logger(name: str = "ai_blog_project", log_level: str = None) -> loggin
 # 기본 로거 인스턴스
 logger = setup_logger()
 
+
+
+
+

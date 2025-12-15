@@ -40,6 +40,41 @@ def save_crawl_result(category_path: List[str], products: List[Dict], output_dir
         return None
 
 
+def save_all_results_to_json(all_results: Dict, output_file: str):
+    """
+    모든 크롤링 결과를 하나의 JSON 파일로 저장 (무신사 형식)
+    
+    Args:
+        all_results: 모든 카테고리별 크롤링 결과 딕셔너리
+        output_file: 출력 파일 경로
+    """
+    Path(output_file).parent.mkdir(parents=True, exist_ok=True)
+    
+    total_categories = len(all_results)
+    total_products = sum(
+        cat_data.get("product_count", 0) 
+        for cat_data in all_results.values()
+    )
+    
+    output_data = {
+        "crawl_date": datetime.now().isoformat(),
+        "total_categories": total_categories,
+        "total_products": total_products,
+        "categories": all_results
+    }
+    
+    try:
+        with open(output_file, 'w', encoding='utf-8') as f:
+            json.dump(output_data, f, ensure_ascii=False, indent=2)
+        logger.info(f"✅ 전체 결과 JSON 저장 완료: {output_file}")
+        logger.info(f"  - 총 카테고리: {total_categories}개")
+        logger.info(f"  - 총 상품: {total_products}개")
+        return output_file
+    except Exception as e:
+        logger.error(f"❌ 결과 저장 실패: {e}")
+        return None
+
+
 def auto_crawl_all_categories(
     max_products_per_category: int = 10,
     delay_between_categories: float = 2.0,
@@ -78,6 +113,9 @@ def auto_crawl_all_categories(
     fail_count = 0
     total_products = 0
     
+    # 전체 결과 저장용 딕셔너리 (무신사 형식)
+    all_results = {}
+    
     # 진행 상황 저장 파일
     progress_file = Path("data/ssadagu/crawl_progress.json")
     Path(progress_file.parent).mkdir(parents=True, exist_ok=True)
@@ -103,10 +141,16 @@ def auto_crawl_all_categories(
                 # 크롤링 실행
                 products = crawl_from_main(category_path, max_products=max_products_per_category)
                 
+                # 카테고리 키 생성 (무신사 형식: "카테고리1 > 카테고리2")
+                category_key = " > ".join(category_path)
+                
                 if products:
-                    # 결과 저장
-                    if save_results:
-                        save_crawl_result(category_path, products)
+                    # 전체 결과에 추가
+                    all_results[category_key] = {
+                        "category_path": category_path,
+                        "product_count": len(products),
+                        "products": products
+                    }
                     
                     success_count += 1
                     total_products += len(products)
@@ -117,6 +161,12 @@ def auto_crawl_all_categories(
                         '상품': total_products
                     })
                 else:
+                    # 상품이 없어도 결과에 추가
+                    all_results[category_key] = {
+                        "category_path": category_path,
+                        "product_count": 0,
+                        "products": []
+                    }
                     logger.warning(f"⚠️  상품 없음: {category_str}")
                     fail_count += 1
                     pbar.set_postfix({
@@ -142,6 +192,14 @@ def auto_crawl_all_categories(
                     time.sleep(delay_between_categories)
                     
             except Exception as e:
+                # 에러 발생 시에도 결과에 추가 (빈 상품 리스트)
+                category_key = " > ".join(category_path)
+                all_results[category_key] = {
+                    "category_path": category_path,
+                    "product_count": 0,
+                    "products": []
+                }
+                
                 logger.error(f"❌ 크롤링 실패: {category_str} - {e}")
                 fail_count += 1
                 import traceback
@@ -166,6 +224,12 @@ def auto_crawl_all_categories(
     logger.info(f"실패: {fail_count}개")
     logger.info(f"총 수집 상품: {total_products}개")
     logger.info(f"{'=' * 80}")
+    
+    # 전체 결과를 하나의 JSON 파일로 저장 (무신사 형식)
+    if save_results and all_results:
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        output_file = f"data/ssadagu/crawl_{timestamp}.json"
+        save_all_results_to_json(all_results, output_file)
 
 
 if __name__ == "__main__":
