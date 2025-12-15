@@ -303,13 +303,14 @@ def scroll_to_load_more(driver: webdriver.Chrome) -> bool:
     return new_height != last_height
 
 
-def crawl_from_main(category_path: list, max_products: int = 100) -> List[Dict[str, str]]:
+def crawl_from_main(category_path: list, max_products: int = 100, driver: Optional[webdriver.Chrome] = None) -> List[Dict[str, str]]:
     """
     메인 페이지에서 시작하여 중첩된 카테고리로 이동 후 크롤링
     
     Args:
         category_path: 카테고리 경로 리스트 (예: ["패션의류/이너웨어", "남성의류", "셔츠"])
         max_products: 최대 수집할 상품 개수 (기본값: 100)
+        driver: 기존 WebDriver 인스턴스 (전달 시 재사용, None이면 새로 생성)
         
     Returns:
         상품 정보 리스트
@@ -317,10 +318,12 @@ def crawl_from_main(category_path: list, max_products: int = 100) -> List[Dict[s
     category_path_str = " > ".join(category_path)
     logger.info(f"메인 페이지에서 카테고리 경로 '{category_path_str}' 크롤링 시작")
     
-    driver = None
+    should_close_driver = False
     try:
-        # 브라우저 설정
-        driver = setup_browser(headless=False)
+        # 브라우저 설정 (전달되지 않았으면 새로 생성)
+        if driver is None:
+            driver = setup_browser(headless=False)
+            should_close_driver = True
         
         # 메인 페이지에서 카테고리로 이동
         category_url = navigate_to_category(driver, category_path)
@@ -336,7 +339,8 @@ def crawl_from_main(category_path: list, max_products: int = 100) -> List[Dict[s
         logger.error(f"크롤링 중 오류: {e}")
         return []
     finally:
-        if driver:
+        # 이 함수에서 생성한 브라우저만 종료
+        if should_close_driver and driver:
             driver.quit()
             logger.info("브라우저 종료")
 

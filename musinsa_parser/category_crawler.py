@@ -82,7 +82,7 @@ def open_musinsa_category_panel(driver):
             const filtered = Array.from(allItems).filter(el => {
                 const href = el.getAttribute('href') || '';
                 // 1depth는 보통 /category/001 형식 (3자리 숫자)
-                return /\/category\/\d{3}$/.test(href);
+                return new RegExp('/category/\\\\d{3}$').test(href);
             });
             
             if (filtered.length > 0) {

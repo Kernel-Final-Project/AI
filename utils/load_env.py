@@ -32,3 +32,7 @@ def get_env(key: str, default: str = None) -> str:
 # 환경변수 자동 로드
 load_environment()
 
+
+
+
+
