@@ -11,14 +11,15 @@ if str(project_root) not in sys.path:
     sys.path.insert(0, str(project_root))
 
 from fastapi import FastAPI
-from api_server.config import API_HOST, API_PORT
+from api_server.config import API_HOST, API_PORT, ROOT_PATH
 from api_server.routers import crawling
 
 # FastAPI 앱 생성
 app = FastAPI(
     title="Crawling API Server",
     description="크롤링 작업을 처리하는 FastAPI 서버",
-    version="1.0.0"
+    version="1.0.0",
+    root_path=ROOT_PATH if ROOT_PATH else None
 )
 
 # 라우터 등록

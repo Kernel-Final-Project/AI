@@ -18,6 +18,7 @@ CRAWLING_RESPONSE_QUEUE: str = "crawling-response-queue"
 # FastAPI 설정
 API_HOST: str = os.getenv("API_HOST", "0.0.0.0")
 API_PORT: int = int(os.getenv("API_PORT", "8000"))
+ROOT_PATH: str = os.getenv("ROOT_PATH", "")  # Nginx 프록시 prefix (예: "/ai")
 
 # Spring 서버 설정 (결과 전송용)
 SPRING_SERVER_URL: str = os.getenv("SPRING_SERVER_URL", "http://localhost:8080/api/v1/crawling/products")
