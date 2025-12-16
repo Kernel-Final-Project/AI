@@ -5,10 +5,13 @@ RabbitMQ consumer for blog upload jobs.
 from __future__ import annotations
 
 import json
+import ssl
 import threading
+import time
 from datetime import datetime, timezone
 
 import pika
+from pika import exceptions as pika_exceptions
 from pika.adapters.blocking_connection import BlockingChannel
 
 from blog_upload_module import UploadResult
@@ -69,8 +72,6 @@ class BlogUploadConsumer:
         logger.info("RabbitMQ 소비 시작 (queue=%s)", self.settings.queue)
         try:
             self._channel.start_consuming()
-        except KeyboardInterrupt:
-            logger.info("소비 종료 요청 수신")
         finally:
             self.stop()
 
@@ -98,7 +99,34 @@ class BlogUploadConsumer:
 
 def run_consumer() -> None:
     consumer = BlogUploadConsumer()
-    consumer.start()
+    retry_delay = 5
+    while True:
+        try:
+            consumer.start()
+        except KeyboardInterrupt:
+            logger.info("워커 종료 요청을 감지했습니다. 종료합니다.")
+            break
+        except (
+            pika_exceptions.StreamLostError,
+            pika_exceptions.AMQPConnectionError,
+            pika_exceptions.ChannelClosedByBroker,
+            pika_exceptions.ConnectionClosedByBroker,
+        ) as exc:
+            logger.warning(
+                "RabbitMQ 연결이 끊어졌습니다. %s초 후 재연결 시도합니다. detail=%s",
+                retry_delay,
+                exc,
+            )
+            time.sleep(retry_delay)
+        except Exception as exc:  # noqa: BLE001
+            logger.exception(
+                "예상치 못한 오류로 워커가 중단되었습니다. %s초 후 재시작합니다.",
+                retry_delay,
+            )
+            time.sleep(retry_delay)
+        else:
+            # start_consuming() 가 정상 종료된 경우(예: stop 호출)에는 루프를 빠져나온다.
+            break
 
 
 def _notify_webhook(

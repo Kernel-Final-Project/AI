@@ -1,11 +1,16 @@
 """
 Mapping between BlogUploadRequest and blog_upload_module uploaders.
 """
+
 from __future__ import annotations
 
 from typing import Dict
 
-from blog_upload_module import UploadResult, upload_to_naver_blog, upload_to_tistory_blog
+from blog_upload_module import (
+    UploadResult,
+    upload_to_naver_blog,
+    upload_to_tistory_blog,
+)
 
 from .logger import logger
 from .models import BlogUploadRequest
@@ -28,7 +33,7 @@ def execute_blog_upload(request: BlogUploadRequest) -> UploadResult:
             naver_id=request.blog_id,
             naver_pw=request.blog_password,
             blog_url=request.blog_url,
-            headless=True,
+            headless=False,
         )
     elif platform == "tistory":
         result = upload_to_tistory_blog(
@@ -36,12 +41,14 @@ def execute_blog_upload(request: BlogUploadRequest) -> UploadResult:
             blog_url=request.blog_url,
             kakao_id=request.blog_id,
             kakao_pw=request.blog_password,
-            headless=True,
+            headless=False,
         )
     else:
         message = f"지원하지 않는 blogType: {request.blog_type}"
         logger.error(message)
-        result = UploadResult(platform=platform or "unknown", success=False, message=message)
+        result = UploadResult(
+            platform=platform or "unknown", success=False, message=message
+        )
 
     if result.posting_url:
         logger.info("업로드 완료 URL: %s", result.posting_url)

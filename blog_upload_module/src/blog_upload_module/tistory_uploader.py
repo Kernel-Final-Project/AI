@@ -1,9 +1,11 @@
 """
 Standalone Tistory uploader.
 """
+
 from __future__ import annotations
 
 import random
+import pyperclip
 import re
 import time
 from pathlib import Path
@@ -13,6 +15,7 @@ from urllib.parse import urljoin, urlparse
 from selenium import webdriver
 from selenium.common.exceptions import (
     NoAlertPresentException,
+    NoSuchElementException,
     TimeoutException,
     UnexpectedAlertPresentException,
 )
@@ -40,6 +43,7 @@ class TistoryBlogAutomation:
         logger.info("티스토리 블로그 자동화 시작")
 
         self.driver: webdriver.Chrome = build_chrome_driver(headless=headless)
+        self.headless = headless
 
         self.wait = WebDriverWait(self.driver, wait_time)
         self.actions = ActionChains(self.driver)
@@ -58,6 +62,7 @@ class TistoryBlogAutomation:
         self.kakao_id = kakao_id
         self.kakao_pw = kakao_pw
         self.last_post_url: Optional[str] = None
+        self.current_editor_mode: str = "basic"
 
     # ------------------------ Utility ------------------------
     def random_sleep(self, a=1, b=2):
@@ -79,7 +84,9 @@ class TistoryBlogAutomation:
         self.random_sleep(2, 3)
 
         kakao_btn = self.wait.until(
-            EC.element_to_be_clickable((By.XPATH, "//*[contains(text(),'카카오계정으로')]"))
+            EC.element_to_be_clickable(
+                (By.XPATH, "//*[contains(text(),'카카오계정으로')]")
+            )
         )
         kakao_btn.click()
         self.random_sleep(2, 3)
@@ -176,16 +183,317 @@ class TistoryBlogAutomation:
     # ------------------------ 글쓰기 UI 대기 ------------------------
     def wait_editor_loaded(self):
         try:
-            self.wait.until(EC.presence_of_element_located((By.CSS_SELECTOR, "#post-title-inp")))
+            self.wait.until(
+                EC.presence_of_element_located((By.CSS_SELECTOR, "#post-title-inp"))
+            )
             self.random_sleep(1, 2)
         except TimeoutException as exc:
             raise TimeoutException(
                 "티스토리 에디터의 제목 입력 칸(#post-title-inp)을 찾지 못했습니다."
             ) from exc
 
+    def _install_auto_confirm(self) -> bool:
+        """
+        Override window.alert/confirm in both main window and editor iframe.
+        """
+        script = """
+        return (function() {
+            const overrideWindow = (win) => {
+                if (!win) return false;
+                try {
+                    if (win.__OCP_CONFIRM_OVERRIDE_DONE) {
+                        return true;
+                    }
+                    const nativeConfirm = win.confirm;
+                    const nativeAlert = win.alert;
+                    if (typeof nativeConfirm !== 'function' && typeof nativeAlert !== 'function') {
+                        win.__OCP_CONFIRM_OVERRIDE_DONE = true;
+                        return false;
+                    }
+                    if (typeof nativeConfirm === 'function') {
+                        win.__OCP_NATIVE_CONFIRM = nativeConfirm;
+                        win.confirm = function(message) {
+                            try {
+                                win.__OCP_LAST_CONFIRM_MESSAGE = message || '';
+                            } catch (ignore) {}
+                            return true;
+                        };
+                    }
+                    if (typeof nativeAlert === 'function') {
+                        win.__OCP_NATIVE_ALERT = nativeAlert;
+                        win.alert = function(message) {
+                            try {
+                                win.__OCP_LAST_CONFIRM_MESSAGE = message || '';
+                            } catch (ignore2) {}
+                            return true;
+                        };
+                    }
+                    win.__OCP_CONFIRM_OVERRIDE_DONE = true;
+                    return true;
+                } catch (err) {
+                    return false;
+                }
+            };
+            const result = { main: overrideWindow(window), iframe: false };
+            try {
+                const iframe = document.querySelector("iframe#editor-tistory_ifr");
+                if (iframe && iframe.contentWindow) {
+                    result.iframe = overrideWindow(iframe.contentWindow);
+                }
+            } catch (ignore) {}
+            return result;
+        })();
+        """
+        try:
+            result = self.driver.execute_script(script) or {}
+            main_enabled = bool(result.get("main"))
+            iframe_enabled = bool(result.get("iframe"))
+            logger.info(
+                "편집기 confirm 자동 수락 활성화(main=%s, iframe=%s)",
+                main_enabled,
+                iframe_enabled,
+            )
+            return main_enabled or iframe_enabled
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("편집기 confirm 무력화 스크립트 주입 실패: %s", exc)
+            return False
+
+    def _is_captcha_present(self) -> bool:
+        driver = self.driver
+        keyword_xpaths = [
+            "//*[contains(text(), '자동 등록 방지')]",
+            "//*[contains(text(), '자동등록방지')]",
+            "//*[contains(text(), '자동입력 방지')]",
+            "//*[contains(text(), '자동입력방지')]",
+            "//*[contains(text(), '캡차')]",
+        ]
+        selectors = [
+            (By.CSS_SELECTOR, "iframe[src*='captcha']"),
+            (By.CSS_SELECTOR, "[id*='captcha']"),
+            (By.CSS_SELECTOR, "[class*='captcha']"),
+            (By.CSS_SELECTOR, "input[name*='captcha']"),
+        ]
+
+        for xpath in keyword_xpaths:
+            try:
+                elements = driver.find_elements(By.XPATH, xpath)
+            except Exception:  # noqa: BLE001
+                continue
+            for element in elements:
+                try:
+                    if element.is_displayed():
+                        return True
+                except Exception:  # noqa: BLE001
+                    continue
+
+        for by, selector in selectors:
+            try:
+                elements = driver.find_elements(by, selector)
+            except Exception:  # noqa: BLE001
+                continue
+            for element in elements:
+                try:
+                    if element.is_displayed():
+                        return True
+                except Exception:  # noqa: BLE001
+                    continue
+        return False
+
+    def _wait_for_captcha_resolution(
+        self, max_wait: int = 600, check_interval: int = 3
+    ):
+        if not self._is_captcha_present():
+            return
+        logger.warning(
+            "캡챠(자동 등록 방지) 감지됨 - 사용자가 직접 입력을 완료할 때까지 대기합니다."
+        )
+        deadline = time.time() + max(5, max_wait)
+        while time.time() < deadline:
+            if not self._is_captcha_present():
+                logger.info("캡챠가 해제되었습니다. 작업을 재개합니다.")
+                self.random_sleep(1, 1.5)
+                return
+            time.sleep(max(1, check_interval))
+        raise TimeoutException("캡챠가 해소되지 않아 작업을 중단합니다.")
+
+    def switch_editor_mode(self, mode: str = "html"):
+        """
+        Open the mode dropdown (기본/마크다운/HTML) and switch to the requested mode.
+        """
+        self._install_auto_confirm()
+        mode_map = {
+            "basic": "#editor-mode-kakao",
+            "kakao": "#editor-mode-kakao",
+            "markdown": "#editor-mode-markdown",
+            "md": "#editor-mode-markdown",
+            "html": "#editor-mode-html",
+        }
+        requested = (mode or "").lower().strip()
+        target_selector = mode_map.get(requested)
+        if not target_selector:
+            logger.warning("지원하지 않는 편집 모드입니다: %s", mode)
+            return
+
+        try:
+            toggle_btn = self.wait.until(
+                EC.element_to_be_clickable(
+                    (By.CSS_SELECTOR, "#editor-mode-layer-btn-open")
+                )
+            )
+        except TimeoutException:
+            logger.warning("편집 모드 전환 버튼을 찾을 수 없습니다.")
+            return
+
+        self._install_auto_confirm()
+        self.driver.execute_script("arguments[0].scrollIntoView(true);", toggle_btn)
+        self.random_sleep(0.2, 0.4)
+        toggle_btn.click()
+        self.random_sleep(0.2, 0.4)
+
+        try:
+            mode_option = self.wait.until(
+                EC.element_to_be_clickable((By.CSS_SELECTOR, target_selector))
+            )
+        except TimeoutException:
+            logger.warning("편집 모드 옵션(%s)을 찾지 못했습니다.", target_selector)
+            return
+
+        try:
+            mode_option.click()
+        except UnexpectedAlertPresentException:
+            logger.debug("모드 옵션 클릭 중 알림 발생, 알림 처리 시도")
+        finally:
+            self.random_sleep(0.3, 0.5)
+            self._handle_mode_change_alert(timeout=5)
+
+        # 드롭다운이 닫힐 시간을 조금 준다.
+        try:
+            self.wait.until(
+                EC.invisibility_of_element_located(
+                    (By.CSS_SELECTOR, "div.mce-menu.mce-in")
+                )
+            )
+        except TimeoutException:
+            logger.debug("편집 모드 드롭다운 닫힘을 명확히 확인하지 못했습니다.")
+        except UnexpectedAlertPresentException:
+            logger.debug("드롭다운 닫힘 대기 중 알림 발생, 처리 시도")
+            self._handle_mode_change_alert(timeout=5)
+
+        self.current_editor_mode = requested
+        if requested == "html":
+            # HTML 모드는 DOM이 실제로 전환되지 않으면 이후 단계가 모두 실패하므로 즉시 검증한다.
+            try:
+                self._wait_html_editor_ready()
+            except TimeoutException as exc:  # noqa: BLE001
+                raise RuntimeError("HTML 편집 모드 전환에 실패했습니다.") from exc
+
+    def _is_html_mode(self) -> bool:
+        return getattr(self, "current_editor_mode", "").lower() == "html"
+
+    def _has_html_editor_dom(self) -> bool:
+        """
+        Check both the main document and potential editor iframe for HTML-mode widgets.
+        """
+        script = """
+        const inspect = (root) => {
+            if (!root) return false;
+            try {
+                const cm = root.querySelector('.ReactCodemirror .CodeMirror');
+                if (cm && cm.CodeMirror) {
+                    const wrapper = cm.CodeMirror.getWrapperElement &&
+                                    cm.CodeMirror.getWrapperElement();
+                    if (wrapper && wrapper.offsetHeight > 0) {
+                        return true;
+                    }
+                }
+                const textarea = root.querySelector(
+                    "textarea#editor-mode-html-textarea, textarea[data-mode='html'], textarea[id*='editor-mode'][id*='html']"
+                );
+                if (textarea && textarea.offsetParent !== null && textarea.offsetHeight > 0) {
+                    return true;
+                }
+            } catch (ignore) {}
+            return false;
+        };
+        if (inspect(document)) {
+            return true;
+        }
+        const iframe = document.querySelector('iframe#editor-tistory_ifr');
+        if (iframe && iframe.contentDocument) {
+            if (inspect(iframe.contentDocument)) {
+                return true;
+            }
+        }
+        return false;
+        """
+        try:
+            return bool(self.driver.execute_script(script))
+        except Exception:  # noqa: BLE001
+            return False
+
+    def _handle_mode_change_alert(self, timeout: float = 3.0) -> bool:
+        """
+        티스토리 모드 변경 시 표시되는 확인 알림(작성 모드를 변경하시겠습니까?) 처리.
+        """
+        try:
+            alert = WebDriverWait(self.driver, timeout).until(EC.alert_is_present())
+        except TimeoutException:
+            return self._accept_mode_change_modal()
+
+        text = ""
+        try:
+            text = alert.text or ""
+        except Exception:  # noqa: BLE001
+            text = ""
+
+        logger.info("편집 모드 변경 알림 감지: %s", text.strip())
+        try:
+            alert.accept()
+            self.random_sleep(0.5, 0.8)
+        except Exception:  # noqa: BLE001
+            try:
+                alert.dismiss()
+                self.random_sleep(0.3, 0.5)
+            except Exception:  # noqa: BLE001
+                pass
+        return True
+
+    def _accept_mode_change_modal(self) -> bool:
+        """
+        일부 환경에서 브라우저 alert 대신 DOM 모달을 띄울 수 있으므로 버튼을 직접 클릭한다.
+        """
+        selectors = [
+            (By.CSS_SELECTOR, "div.mce-window button.mce-primary"),
+            (By.CSS_SELECTOR, "div[role='dialog'] button[data-mce-focus]"),
+            (By.XPATH, "//button[contains(text(), '확인')]"),
+            (By.XPATH, "//span[contains(text(), '확인')]/parent::button"),
+        ]
+        for by, selector in selectors:
+            try:
+                element = self.driver.find_element(by, selector)
+            except Exception:  # noqa: BLE001
+                continue
+            if not element.is_displayed():
+                continue
+            try:
+                self.driver.execute_script(
+                    "arguments[0].scrollIntoView(true);", element
+                )
+                self.random_sleep(0.2, 0.4)
+                element.click()
+                self.random_sleep(0.4, 0.6)
+                logger.info("편집 모드 변경 모달 버튼 클릭으로 확인 처리")
+                return True
+            except Exception:  # noqa: BLE001
+                continue
+        return False
+
     # ------------------------ 제목 입력 ------------------------
     def enter_title(self, title: str):
-        element = self.wait.until(EC.element_to_be_clickable((By.CSS_SELECTOR, "#post-title-inp")))
+        self._handle_mode_change_alert()
+        element = self.wait.until(
+            EC.element_to_be_clickable((By.CSS_SELECTOR, "#post-title-inp"))
+        )
         self.driver.execute_script("arguments[0].scrollIntoView(true);", element)
         self.random_sleep(0.2, 0.4)
         element.click()
@@ -194,48 +502,185 @@ class TistoryBlogAutomation:
         element.send_keys(Keys.BACKSPACE)
         self.human_type(element, title)
 
-    # ------------------------ 본문 입력 ------------------------
-    def enter_content(self, content: str):
-        iframe = self.wait.until(
-            EC.frame_to_be_available_and_switch_to_it((By.CSS_SELECTOR, "iframe#editor-tistory_ifr"))
+    # ------------------------ HTML 본문 입력 ------------------------
+    def paste_content_like_human(self, content: str, timeout: int = 15):
+        driver = self.driver
+        wait = WebDriverWait(driver, timeout)
+
+        cm = wait.until(
+            EC.presence_of_element_located((By.CSS_SELECTOR, ".CodeMirror"))
         )
 
-        body = self.wait.until(EC.element_to_be_clickable((By.CSS_SELECTOR, "body#tinymce")))
+        line = cm.find_element(By.CSS_SELECTOR, ".CodeMirror-line")
 
-        self.driver.execute_script("arguments[0].scrollIntoView(true);", body)
-        self.random_sleep(0.2, 0.4)
+        driver.execute_script("arguments[0].scrollIntoView({block:'center'});", line)
 
-        body.click()
-        self.random_sleep(0.2, 0.3)
+        ActionChains(driver).move_to_element_with_offset(line, 5, 5).click().perform()
 
-        body.send_keys(Keys.CONTROL, "a")
-        body.send_keys(Keys.BACKSPACE)
+        time.sleep(0.3)
 
-        self.human_type(body, content)
-        self.driver.switch_to.default_content()
+        pyperclip.copy(content)
+        time.sleep(0.2)
+
+        ActionChains(driver).key_down(Keys.CONTROL).send_keys("v").key_up(
+            Keys.CONTROL
+        ).perform()
+
+        time.sleep(max(0.5, min(2, len(content) / 5000)))
+        return True
+
+    def enter_content(self, content: str):
+        """
+        HTML 모드 본문 입력
+        - 에디터 준비 확인
+        - 실제 입력 (human_like)
+        - 입력 적용 확인
+        """
+        logger.info("HTML 모드 본문 입력 시도!")
+
+        self._handle_mode_change_alert()
+        try:
+            self._wait_html_editor_ready()
+        except RuntimeError:
+            self._dump_debug_artifacts()
+            raise RuntimeError("HTML 에디터 준비 실패")
+
+        if not self.paste_content_like_human(content):
+            self._dump_debug_artifacts()
+            raise RuntimeError("HTML 본문 입력 실패: CodeMirror/textarea 접근 불가")
+
+        if not self._wait_html_content_applied(content, timeout=15):
+            self._dump_debug_artifacts()
+            raise RuntimeError("HTML 본문 검증 실패: 내용 불일치")
+
+        logger.info("HTML 모드 본문 입력 완료 !!")
+
+    def _wait_html_editor_ready(self, timeout: int = 15):
+        """
+        HTML 모드 에디터가 실제 입력 가능한 상태가 될 때까지 대기
+        - 메인 DOM CodeMirror
+        - 메인 DOM textarea
+        - iframe 내 CodeMirror / textarea
+        """
+        try:
+            WebDriverWait(self.driver, timeout).until(
+                lambda d: d.execute_script(
+                    """
+                    function readyCM(cmContainer) { return cmContainer && cmContainer.CodeMirror; }
+                    function readyTA(ta) { return ta && ta.offsetParent !== null; }
+
+                    let cm = document.querySelector('.ReactCodemirror .CodeMirror');
+                    if (readyCM(cm)) return true;
+
+                    let ta = document.querySelector('textarea#editor-mode-html-textarea');
+                    if (readyTA(ta)) return true;
+
+                    const iframe = document.querySelector('iframe#editor-tistory_ifr');
+                    if (iframe && iframe.contentDocument) {
+                        const doc = iframe.contentDocument;
+                        cm = doc.querySelector('.ReactCodemirror .CodeMirror');
+                        if (readyCM(cm)) return true;
+                        ta = doc.querySelector('textarea');
+                        if (readyTA(ta)) return true;
+                    }
+                    return false;
+                    """
+                )
+            )
+            return True
+        except TimeoutException:
+            self._dump_debug_artifacts()
+            raise RuntimeError("HTML 에디터 준비 실패: CodeMirror나 textarea 접근 불가")
+
+    def _wait_html_content_applied(self, content: str, timeout=15) -> bool:
+        """입력한 HTML이 실제 CodeMirror나 textarea에 반영됐는지 확인"""
+        wait = WebDriverWait(self.driver, timeout)
+        normalized_len = max(1, int(len(content.strip().replace(" ", "")) * 0.9))
+
+        def _applied(driver):
+            try:
+                return driver.execute_script(
+                    """
+                    const minLen = arguments[0];
+
+                    function checkCM(cmContainer) {
+                        const val = cmContainer.CodeMirror.getValue() || '';
+                        return val.replace(/\s+/g,'').length >= minLen;
+                    }
+
+                    function checkTA(ta) {
+                        const val = ta.value || '';
+                        return val.replace(/\s+/g,'').length >= minLen;
+                    }
+
+                    // 메인 CodeMirror
+                    let cm = document.querySelector('.ReactCodemirror .CodeMirror');
+                    if (cm && cm.CodeMirror && checkCM(cm)) return true;
+
+                    // 메인 textarea
+                    let ta = document.querySelector('textarea#editor-mode-html-textarea');
+                    if (ta && ta.offsetParent !== null && checkTA(ta)) return true;
+
+                    // iframe CodeMirror / textarea
+                    const iframe = document.querySelector('iframe#editor-tistory_ifr');
+                    if (iframe && iframe.contentDocument) {
+                        const doc = iframe.contentDocument;
+                        cm = doc.querySelector('.ReactCodemirror .CodeMirror');
+                        if (cm && cm.CodeMirror && checkCM(cm)) return true;
+
+                        ta = doc.querySelector('textarea');
+                        if (ta && ta.offsetParent !== null && checkTA(ta)) return true;
+                    }
+
+                    return false;
+                    """,
+                    normalized_len,
+                )
+            except Exception:
+                return False
+
+        try:
+            wait.until(_applied)
+            return True
+        except TimeoutException:
+            logger.warning("HTML 본문이 기대 길이만큼 적용되지 않았습니다.")
+            return False
 
     # ------------------------ 발행 버튼 클릭 ------------------------
     def click_publish(self):
-        complete_btn = self.wait.until(EC.element_to_be_clickable((By.CSS_SELECTOR, "#publish-layer-btn")))
+        self._handle_mode_change_alert()
+        self._wait_for_captcha_resolution()
+        complete_btn = self.wait.until(
+            EC.element_to_be_clickable((By.CSS_SELECTOR, "#publish-layer-btn"))
+        )
         self.driver.execute_script("arguments[0].scrollIntoView(true);", complete_btn)
         self.random_sleep(0.2, 0.4)
         complete_btn.click()
         self.random_sleep(1, 2)
+        self._wait_for_captcha_resolution()
 
         try:
-            open_public = self.wait.until(EC.element_to_be_clickable((By.CSS_SELECTOR, "#open20")))
-            self.driver.execute_script("arguments[0].scrollIntoView(true);", open_public)
+            open_public = self.wait.until(
+                EC.element_to_be_clickable((By.CSS_SELECTOR, "#open20"))
+            )
+            self.driver.execute_script(
+                "arguments[0].scrollIntoView(true);", open_public
+            )
             self.random_sleep(0.3, 0.5)
             open_public.click()
             self.random_sleep(0.3, 0.6)
+            self._wait_for_captcha_resolution()
         except Exception as exc:  # noqa: BLE001
             logger.error("공개 라디오 버튼(#open20)을 찾을 수 없음")
             raise exc
 
-        publish_btn = self.wait.until(EC.element_to_be_clickable((By.CSS_SELECTOR, "#publish-btn")))
+        publish_btn = self.wait.until(
+            EC.element_to_be_clickable((By.CSS_SELECTOR, "#publish-btn"))
+        )
         self.driver.execute_script("arguments[0].scrollIntoView(true);", publish_btn)
         self.random_sleep(0.3, 0.5)
         publish_btn.click()
+        self._wait_for_captcha_resolution()
 
         self.random_sleep(3, 4)
         logger.info("티스토리 공개 발행 완료")
@@ -249,7 +694,10 @@ class TistoryBlogAutomation:
             self.random_sleep(2, 3)
 
             self._dismiss_alerts()
+            self._wait_for_captcha_resolution()
+            self._install_auto_confirm()
             self.wait_editor_loaded()
+            self.switch_editor_mode("html")
             self.enter_title(title)
             self.enter_content(content)
             self.random_sleep(1, 2)
@@ -332,7 +780,9 @@ class TistoryBlogAutomation:
                 for element in elements:
                     if not element.is_displayed():
                         continue
-                    href = element.get_attribute("href") or element.get_attribute("data-url")
+                    href = element.get_attribute("href") or element.get_attribute(
+                        "data-url"
+                    )
                     href = self._normalize_post_url(href)
                     if self._is_valid_post_url(href):
                         return href
@@ -412,7 +862,9 @@ class TistoryBlogAutomation:
                     html = driver.page_source
                 except Exception:  # noqa: BLE001
                     html = ""
-                pattern = re.compile(rf"{re.escape(base_url.rstrip('/'))}/[0-9A-Za-z/_-]+")
+                pattern = re.compile(
+                    rf"{re.escape(base_url.rstrip('/'))}/[0-9A-Za-z/_-]+"
+                )
                 for match in pattern.findall(html):
                     if self._is_valid_post_url(match):
                         return match
@@ -429,7 +881,8 @@ class TistoryBlogAutomation:
 
             try:
                 WebDriverWait(driver, 5).until(
-                    lambda d: "tistory.com" in d.current_url and "manage" not in d.current_url
+                    lambda d: "tistory.com" in d.current_url
+                    and "manage" not in d.current_url
                 )
             except TimeoutException:
                 pass
@@ -461,7 +914,9 @@ class TistoryBlogAutomation:
             return False
         if not parsed.path or parsed.path.strip("/") == "":
             return False
-        if parsed.path.strip("/").lower() == "feed" or parsed.path.lower().endswith("/feed"):
+        if parsed.path.strip("/").lower() == "feed" or parsed.path.lower().endswith(
+            "/feed"
+        ):
             return False
         return True
 
@@ -520,7 +975,9 @@ class TistoryBlogAutomation:
             return dataset_url
 
         try:
-            view_buttons = driver.find_elements(By.CSS_SELECTOR, "button.btn_view, button.link_post")
+            view_buttons = driver.find_elements(
+                By.CSS_SELECTOR, "button.btn_view, button.link_post"
+            )
         except Exception:  # noqa: BLE001
             view_buttons = []
         for button in view_buttons:

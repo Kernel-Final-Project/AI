@@ -13,6 +13,7 @@ authors = [{ name = "OCP" }]
 dependencies = [
     "selenium>=4.15.0",
     "webdriver-manager>=4.0.0",
+    "pyperclip>=1.8.2",
 ]
 
 [project.optional-dependencies]
