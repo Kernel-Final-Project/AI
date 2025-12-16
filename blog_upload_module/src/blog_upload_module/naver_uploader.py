@@ -1,11 +1,13 @@
 """
 Standalone Naver blog uploader (copied from auto_posting/naver_uploader.py).
 """
+
 from __future__ import annotations
 
 import platform
 import random
 import time
+import pyautogui
 from pathlib import Path
 from typing import Dict, Optional
 from urllib.parse import urlparse
@@ -25,8 +27,14 @@ from .results import UploadResult
 
 class NaverBlogAutomation:
     """
-    네이버 블로그 자동 업로드 봇 (standalone 버전)
+    네이버 블로그 자동 업로드 봇
+    - 제목: DOM + ActionChains
+    - 본문: HTML -> onlineviewer -> Ctrl+V (리치)
     """
+
+    # ===== pyautogui 좌표 (환경에 맞게 조정된 값) =====
+    BODY_POS = (989, 1010)
+    PREVIEW_POS = (1861, 314)
 
     def __init__(
         self,
@@ -54,6 +62,15 @@ class NaverBlogAutomation:
         self.last_post_url: Optional[str] = None
 
     # ------------------------ 공통 유틸 ------------------------
+
+    def _hotkey(self, *keys):
+        """
+        ctrl -> mac에서는 command 로 자동 변환
+        """
+        if self.is_mac:
+            keys = tuple("command" if k == "ctrl" else k for k in keys)
+        pyautogui.hotkey(*keys)
+
     def random_sleep(self, a=0.8, b=1.5):
         time.sleep(random.uniform(a, b))
 
@@ -84,7 +101,9 @@ class NaverBlogAutomation:
         blog_url = self.blog_url
 
         if not naver_id or not naver_pw or not blog_url:
-            raise ValueError("NAVER_ID, NAVER_PW, NAVER_BLOG_URL이 설정되지 않았습니다.")
+            raise ValueError(
+                "NAVER_ID, NAVER_PW, NAVER_BLOG_URL이 설정되지 않았습니다."
+            )
 
         try:
             parsed = urlparse(blog_url.rstrip("/"))
@@ -214,7 +233,9 @@ class NaverBlogAutomation:
 
         try:
             driver.switch_to.default_content()
-            main_frame = wait.until(EC.presence_of_element_located((By.ID, "mainFrame")))
+            main_frame = wait.until(
+                EC.presence_of_element_located((By.ID, "mainFrame"))
+            )
             driver.switch_to.frame(main_frame)
             time.sleep(2)
         except Exception as exc:  # noqa: BLE001
@@ -296,120 +317,209 @@ class NaverBlogAutomation:
         driver = self.driver
         wait = self.wait
 
-        first_publish_btn = wait.until(
-            EC.element_to_be_clickable((By.CSS_SELECTOR, "button.publish_btn__m9KHH"))
-        )
-        driver.execute_script("arguments[0].scrollIntoView(true);", first_publish_btn)
-        time.sleep(0.3)
-        first_publish_btn.click()
-        self.random_sleep(0.7, 1.2)
-
-        final_btn = wait.until(
-            EC.element_to_be_clickable((By.CSS_SELECTOR, "button.confirm_btn__WEaBq"))
-        )
-        driver.execute_script("arguments[0].scrollIntoView(true);", final_btn)
-        time.sleep(0.3)
-        final_btn.click()
-
-    # ------------------------ 실제 글 작성 로직 ------------------------
-    def _write_into_editor(self, title: str, content: str) -> bool:
-        driver = self.driver
-        actions = self.actions
-
-        title_selectors = [
-            ".se-section-documentTitle",
-            ".se-documentTitle-input",
-            ".document_title",
-            "input.se-ff-nanummyeongjo",
+        # ----- 1차 발행 버튼 -----
+        first_candidates = [
+            (By.CSS_SELECTOR, "button.publish_btn__m9KHH"),
+            (By.XPATH, "//button[.//span[normalize-space()='발행']]"),
+            (By.XPATH, "//span[normalize-space()='발행']/ancestor::button[1]"),
         ]
 
-        title_elem = None
-        for selector in title_selectors:
-            elems = driver.find_elements(By.CSS_SELECTOR, selector)
-            for el in elems:
-                if el.is_displayed():
-                    title_elem = el
+        first_btn = None
+        for by, sel in first_candidates:
+            try:
+                first_btn = wait.until(EC.element_to_be_clickable((by, sel)))
+                if first_btn:
                     break
-            if title_elem:
+            except Exception:
+                continue
+
+        if not first_btn:
+            raise RuntimeError("1차 발행 버튼을 찾지 못했습니다.")
+
+        driver.execute_script(
+            "arguments[0].scrollIntoView({block:'center'});", first_btn
+        )
+        time.sleep(0.3)
+        driver.execute_script("arguments[0].click();", first_btn)
+        self.random_sleep(0.8, 1.2)
+
+        # ----- 최종 발행 버튼 -----
+        final_candidates = [
+            (By.CSS_SELECTOR, "button[data-testid='seOnePublishBtn']"),
+            (By.CSS_SELECTOR, "button.confirm_btn__WEaBq"),
+            (By.XPATH, "//button[.//span[normalize-space()='발행']]"),
+            (By.XPATH, "//span[normalize-space()='발행']/ancestor::button[1]"),
+        ]
+
+        final_btn = None
+        for by, sel in final_candidates:
+            try:
+                final_btn = wait.until(EC.element_to_be_clickable((by, sel)))
+                if final_btn:
+                    break
+            except Exception:
+                continue
+
+        if not final_btn:
+            raise RuntimeError("최종 발행 버튼을 찾지 못했습니다.")
+
+        driver.execute_script(
+            "arguments[0].scrollIntoView({block:'center'});", final_btn
+        )
+        time.sleep(0.3)
+        driver.execute_script("arguments[0].click();", final_btn)
+
+    # ------------------------------------------------------------------
+    # 제목 입력 (DOM)
+    # ------------------------------------------------------------------
+    def _write_title(self, title: str):
+        driver = self.driver
+
+        # 반드시 frame 보정
+        driver.switch_to.default_content()
+        try:
+            frame = driver.find_element(By.ID, "mainFrame")
+            driver.switch_to.frame(frame)
+        except Exception:
+            pass
+
+        time.sleep(0.5)
+
+        title_el = None
+
+        # 1️⃣ 최신 네이버용 (가장 중요)
+        candidates = driver.find_elements(
+            By.XPATH, "//*[@contenteditable='true' and @role='textbox']"
+        )
+        for el in candidates:
+            if el.is_displayed():
+                title_el = el
                 break
 
-        if not title_elem:
-            xpath_elems = driver.find_elements(
-                By.XPATH,
-                "//*[contains(@class, 'title') or contains(@placeholder, '제목')]",
-            )
-            for el in xpath_elems:
-                if el.is_displayed():
-                    title_elem = el
+        # 2️⃣ 기존 CSS fallback
+        if not title_el:
+            selectors = [
+                ".se-section-documentTitle",
+                ".se-documentTitle-input",
+                ".document_title",
+                "input.se-ff-nanummyeongjo",
+            ]
+            for sel in selectors:
+                for el in driver.find_elements(By.CSS_SELECTOR, sel):
+                    if el.is_displayed():
+                        title_el = el
+                        break
+                if title_el:
                     break
 
-        if not title_elem:
-            raise Exception("제목 입력 필드를 찾을 수 없습니다.")
+        # 3️⃣ 최후 XPath fallback
+        if not title_el:
+            xpath_candidates = driver.find_elements(
+                By.XPATH,
+                "//*[contains(@placeholder,'제목') or contains(@class,'title')]",
+            )
+            for el in xpath_candidates:
+                if el.is_displayed():
+                    title_el = el
+                    break
 
-        title_elem.click()
-        time.sleep(0.5)
+        if not title_el:
+            raise RuntimeError("제목 입력 필드를 찾지 못했습니다 (DOM 미생성 상태)")
+
+        # 입력
+        title_el.click()
+        time.sleep(0.3)
         self.select_all_and_delete()
         self.human_type_actions(title)
+        time.sleep(0.4)
 
-        body_selectors = [
-            ".se-section-text",
-            ".se-text-paragraph",
-            ".content_text",
-            ".se-main-container",
-        ]
+    # ------------------------------------------------------------------
+    # HTML -> onlineviewer -> 클립보드 복사
+    # ------------------------------------------------------------------
+    def _copy_html_as_rich(self, html: str):
+        driver = self.driver
+        logger.info("onlineviewer HTML 변환 시작")
 
-        body_elem = None
-        for selector in body_selectors:
-            elems = driver.find_elements(By.CSS_SELECTOR, selector)
-            for el in elems:
-                if el.is_displayed():
-                    body_elem = el
-                    break
-            if body_elem:
-                break
+        driver.get("https://html.onlineviewer.net/")
+        time.sleep(3)
 
-        if not body_elem:
-            xpath_elems = driver.find_elements(
-                By.XPATH,
-                "//*[contains(@class, 'content') or "
-                "contains(@class, 'text') or "
-                "contains(@class, 'body')]",
-            )
-            for el in xpath_elems:
-                if el.is_displayed() and el.get_attribute("contenteditable") == "true":
-                    body_elem = el
-                    break
+        driver.execute_script(
+            """
+            const ed = window.ace && window.ace.edit("editor");
+            if (!ed) throw new Error("Ace editor not found");
+            ed.setValue(arguments[0], -1);
+            if (typeof previewHtml === 'function') previewHtml();
+            """,
+            html,
+        )
 
-        if not body_elem:
-            raise Exception("본문 입력 필드를 찾을 수 없습니다.")
+        time.sleep(2.5)
 
-        body_elem.click()
+        pyautogui.click(*self.PREVIEW_POS)
+        time.sleep(0.2)
+        self._hotkey("ctrl", "a")
+        time.sleep(0.1)
+        self._hotkey("ctrl", "c")
         time.sleep(0.5)
-        self.select_all_and_delete()
 
-        lines = content.split("\n")
-        for line in lines:
-            self.human_type_actions(line)
-            actions.send_keys("\n").perform()
-            time.sleep(0.05)
+        logger.info("리치 HTML 클립보드 복사 완료")
 
-        self.click_publish()
+    # ------------------------------------------------------------------
+    # 네이버 본문 리치 붙여넣기
+    # ------------------------------------------------------------------
+    def _paste_body_rich(self):
+        logger.info("네이버 본문 리치 붙여넣기")
 
-        # 발행 완료 후 잠시 대기하여 리디렉션/모달을 처리한다.
-        self.random_sleep(1.0, 1.8)
-        self.last_post_url = self._extract_post_url()
-        return True
+        pyautogui.click(*self.BODY_POS)
+        time.sleep(0.25)
 
-    def write_post(self, title: str, content: str) -> bool:
+        pyautogui.press("esc")
+        time.sleep(0.05)
+        pyautogui.press("enter")
+        time.sleep(0.05)
+        pyautogui.press("up")
+        time.sleep(0.1)
+
+        self._hotkey("ctrl", "v")
+        time.sleep(1.8)
+
+    def _paste_body_in_naver_blog(self):
+        """본문을 네이버 블로그에 붙여넣기"""
+        pyautogui.click(*self.BODY_POS)  # 본문 위치 클릭
+        time.sleep(0.25)
+        pyautogui.press("esc")
+        time.sleep(0.05)
+        pyautogui.press("enter")
+        time.sleep(0.05)
+        pyautogui.press("up")
+        time.sleep(0.1)
+        self._hotkey("ctrl", "v")  # Ctrl+V 붙여넣기
+        time.sleep(1.8)
+
+    def write_post_with_html_viewer(self, title: str, body_html: str):
         try:
-            if not self.prepare_editor():
-                raise Exception("글쓰기 에디터 준비 실패")
+            # 1. HTML 뷰어로 이동하여 본문을 리치 포맷으로 변환
+            self._copy_html_as_rich(body_html)
 
-            if self._write_into_editor(title, content):
-                logger.info("네이버 글 작성 및 발행 전체 프로세스 완료")
-                return True
-            return False
-        except Exception as exc:  # noqa: BLE001
+            # 2. 네이버 블로그로 이동
+            driver = self.driver
+            driver.get("https://blog.naver.com/GoBlogWrite.naver")
+            time.sleep(3)
+
+            # 3. 제목 입력
+            self._write_title(title)
+
+            # 4. 본문 붙여넣기
+            self._paste_body_in_naver_blog()
+
+            # 5. 발행 클릭
+            self.click_publish()
+
+            self.random_sleep(1.2, 1.8)
+            self.last_post_url = self.driver.current_url
+            return True
+
+        except Exception as exc:
             logger.error("네이버 글 작성 실패: %s", exc)
             self._dump_debug_artifacts()
             return False
@@ -495,7 +605,9 @@ class NaverBlogAutomation:
                 post_id = publish_meta.get("postId")
                 if blog_id and post_id:
                     posting_url = f"https://blog.naver.com/{blog_id}/{post_id}"
-                    logger.info("window.__INITIAL_STATE__ 에서 발행 URL 구성: %s", posting_url)
+                    logger.info(
+                        "window.__INITIAL_STATE__ 에서 발행 URL 구성: %s", posting_url
+                    )
                     return posting_url
 
             # 4) 열린 창/탭을 순회하여 현재 URL 확인
@@ -592,7 +704,7 @@ def upload_to_naver_blog(
             wait_time=wait_time,
         )
         bot.login()
-        success = bot.write_post(title, body)
+        success = bot.write_post_with_html_viewer(title, body)
 
         if success:
             logger.info("네이버 블로그 업로드 완료")
