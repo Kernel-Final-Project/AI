@@ -20,6 +20,7 @@ class BlogUploadRequest:
     blog_url: str
     webhook_url: Optional[str] = None
     webhook_token: Optional[str] = None
+    is_test: bool = False
 
     @classmethod
     def from_dict(cls, payload: Dict[str, Any]) -> "BlogUploadRequest":
@@ -33,6 +34,7 @@ class BlogUploadRequest:
             blog_url=payload.get("blogUrl") or "",
             webhook_url=payload.get("webhookUrl"),
             webhook_token=payload.get("webhookToken"),
+            is_test=bool(payload.get("isTest")),
         )
 
     @classmethod

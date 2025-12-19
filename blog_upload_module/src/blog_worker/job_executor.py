@@ -23,9 +23,16 @@ def _build_payload(request: BlogUploadRequest) -> Dict[str, str]:
 
 
 def execute_blog_upload(request: BlogUploadRequest) -> UploadResult:
-    payload = _build_payload(request)
     platform = request.blog_type.lower()
-    logger.info("워크 %s 업로드 시작 (platform=%s)", request.work_id, platform)
+    logger.info(
+        "워크 %s 업로드 시작 (platform=%s, isTest=%s)",
+        request.work_id,
+        platform,
+        request.is_test,
+    )
+
+    payload = _build_payload(request)
+    dry_run = bool(request.is_test)
 
     if platform == "naver":
         result = upload_to_naver_blog(
@@ -34,6 +41,7 @@ def execute_blog_upload(request: BlogUploadRequest) -> UploadResult:
             naver_pw=request.blog_password,
             blog_url=request.blog_url,
             headless=False,
+            dry_run=dry_run,
         )
     elif platform == "tistory":
         result = upload_to_tistory_blog(
@@ -42,6 +50,7 @@ def execute_blog_upload(request: BlogUploadRequest) -> UploadResult:
             kakao_id=request.blog_id,
             kakao_pw=request.blog_password,
             headless=False,
+            dry_run=dry_run,
         )
     else:
         message = f"지원하지 않는 blogType: {request.blog_type}"
@@ -49,6 +58,12 @@ def execute_blog_upload(request: BlogUploadRequest) -> UploadResult:
         result = UploadResult(
             platform=platform or "unknown", success=False, message=message
         )
+
+    if dry_run:
+        result.metadata = dict(result.metadata or {})
+        result.metadata.update({"skippedPublish": True, "isTest": True})
+        if not result.message:
+            result.message = "테스트 요청으로 최종 발행을 생략했습니다."
 
     if result.posting_url:
         logger.info("업로드 완료 URL: %s", result.posting_url)

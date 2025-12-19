@@ -686,7 +686,7 @@ class TistoryBlogAutomation:
         logger.info("티스토리 공개 발행 완료")
 
     # ------------------------ MAIN ------------------------
-    def write_post(self, title: str, content: str) -> bool:
+    def write_post(self, title: str, content: str, *, dry_run: bool = False) -> bool:
         try:
             logger.info("티스토리 글쓰기 페이지 이동: %s", self.blog_write_url)
 
@@ -701,14 +701,18 @@ class TistoryBlogAutomation:
             self.enter_title(title)
             self.enter_content(content)
             self.random_sleep(1, 2)
-            self.click_publish()
 
-            logger.info("티스토리 글 발행 완료")
-
-            self.random_sleep(1, 2)
-            self.last_post_url = self._extract_post_url()
-            if self.last_post_url:
-                logger.info("티스토리 발행 URL: %s", self.last_post_url)
+            if dry_run:
+                logger.info("테스트 모드 - 티스토리 발행 단계 생략")
+            else:
+                self.click_publish()
+                logger.info("티스토리 글 발행 완료")
+                self.random_sleep(1, 2)
+                self.last_post_url = self._extract_post_url()
+                if self.last_post_url:
+                    logger.info("티스토리 발행 URL: %s", self.last_post_url)
+            if dry_run:
+                self.last_post_url = None
 
             return True
 
@@ -1067,6 +1071,7 @@ def upload_to_tistory_blog(
     kakao_pw: str,
     headless: bool = False,
     wait_time: int = 10,
+    dry_run: bool = False,
 ) -> UploadResult:
     """
     Standalone 호출용 래퍼
@@ -1096,7 +1101,7 @@ def upload_to_tistory_blog(
             wait_time=wait_time,
         )
         bot.login()
-        success = bot.write_post(title, body)
+        success = bot.write_post(title, body, dry_run=dry_run)
 
         if success:
             logger.info("티스토리 블로그 업로드 완료")

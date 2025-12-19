@@ -1,9 +1,8 @@
 .venv/
+venv/
 __pycache__/
 *.pyc
 logs/
 dist/
 build/
 *.egg-info/
-venv/
-.vscode/

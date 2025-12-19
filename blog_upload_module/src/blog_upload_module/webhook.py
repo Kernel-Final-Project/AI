@@ -56,6 +56,7 @@ def notify_upload_result(
     timeout: int = 5,
     work_id: Optional[str] = None,
     completed_at: Optional[str] = None,
+    is_test: bool = False,
     log: Optional[logging.Logger] = None,
 ) -> None:
     """
@@ -66,6 +67,7 @@ def notify_upload_result(
 
     logger_to_use = log or logger
     payload = result.to_payload(work_id=work_id)
+    payload["isTest"] = bool(is_test)
     if completed_at:
         payload["completedAt"] = completed_at
     logger_to_use.info(

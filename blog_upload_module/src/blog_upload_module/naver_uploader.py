@@ -496,7 +496,9 @@ class NaverBlogAutomation:
         self._hotkey("ctrl", "v")  # Ctrl+V 붙여넣기
         time.sleep(1.8)
 
-    def write_post_with_html_viewer(self, title: str, body_html: str):
+    def write_post_with_html_viewer(
+        self, title: str, body_html: str, *, dry_run: bool = False
+    ):
         try:
             # 1. HTML 뷰어로 이동하여 본문을 리치 포맷으로 변환
             self._copy_html_as_rich(body_html)
@@ -512,11 +514,17 @@ class NaverBlogAutomation:
             # 4. 본문 붙여넣기
             self._paste_body_in_naver_blog()
 
-            # 5. 발행 클릭
-            self.click_publish()
+            # 5. 발행 클릭 (테스트 모드인 경우 생략)
+            if dry_run:
+                logger.info("테스트 모드 - 네이버 발행 단계 생략")
+            else:
+                self.click_publish()
 
             self.random_sleep(1.2, 1.8)
-            self.last_post_url = self.driver.current_url
+            if dry_run:
+                self.last_post_url = None
+            else:
+                self.last_post_url = self.driver.current_url
             return True
 
         except Exception as exc:
@@ -675,6 +683,7 @@ def upload_to_naver_blog(
     blog_url: str,
     headless: bool = False,
     wait_time: int = 10,
+    dry_run: bool = False,
 ) -> UploadResult:
     """
     Standalone 호출용 래퍼
@@ -704,7 +713,7 @@ def upload_to_naver_blog(
             wait_time=wait_time,
         )
         bot.login()
-        success = bot.write_post_with_html_viewer(title, body)
+        success = bot.write_post_with_html_viewer(title, body, dry_run=dry_run)
 
         if success:
             logger.info("네이버 블로그 업로드 완료")

@@ -140,5 +140,6 @@ def _notify_webhook(
         timeout=5,
         work_id=work_id,
         completed_at=completed_at,
+        is_test=request.is_test,
         log=logger,
     )
