@@ -187,7 +187,21 @@ class NaverBlogAutomation:
     # ------------------------ 도움말 패널 닫기 ------------------------
     def close_help_panel(self):
         driver = self.driver
-        logger.info("도움말 패널 닫기 시도...")
+        logger.info("도움말 패널 및 팝업 딤 레이어 닫기 시도...")
+
+        # 팝업 딤 레이어 강제 제거
+        try:
+            driver.execute_script(
+                """
+            var dims = document.querySelectorAll('.se-popup-dim, .se-popup-dim-white, [class*="popup-dim"]');
+            dims.forEach(function(dim) {
+                dim.remove();
+            });
+            """
+            )
+            time.sleep(0.5)
+        except Exception:  # noqa: BLE001
+            pass
 
         try:
             driver.execute_script(
@@ -229,7 +243,7 @@ class NaverBlogAutomation:
         except Exception:  # noqa: BLE001
             pass
 
-        logger.info("도움말 패널 닫기 시도 완료")
+        logger.info("도움말 패널 및 팝업 딤 레이어 닫기 완료")
 
     # ------------------------ 글쓰기 페이지 준비 ------------------------
     def prepare_editor(self) -> bool:
@@ -398,6 +412,27 @@ class NaverBlogAutomation:
 
         time.sleep(0.5)
 
+        # 팝업 딤 레이어 제거 (강화)
+        self.close_help_panel()
+        time.sleep(0.5)  # 팝업 제거 후 대기 시간 추가
+
+        # 팝업 딤 레이어가 완전히 사라졌는지 확인
+        try:
+            driver.execute_script(
+                """
+                var dims = document.querySelectorAll('.se-popup-dim, .se-popup-dim-white, [class*="popup-dim"]');
+                if (dims.length > 0) {
+                    dims.forEach(function(dim) {
+                        dim.style.display = 'none';
+                        dim.remove();
+                    });
+                }
+                """
+            )
+            time.sleep(0.3)
+        except Exception:  # noqa: BLE001
+            pass
+
         title_el = None
 
         # 1️⃣ 최신 네이버용 (가장 중요)
@@ -439,9 +474,14 @@ class NaverBlogAutomation:
         if not title_el:
             raise RuntimeError("제목 입력 필드를 찾지 못했습니다 (DOM 미생성 상태)")
 
-        # 입력
-        title_el.click()
-        time.sleep(0.3)
+        # 입력 - JavaScript로 포커스 (팝업 차단 회피)
+        try:
+            driver.execute_script("arguments[0].focus();", title_el)
+            time.sleep(0.3)
+        except Exception:  # noqa: BLE001
+            title_el.click()
+            time.sleep(0.3)
+
         self.select_all_and_delete()
         self.human_type_actions(title)
         time.sleep(0.4)
@@ -497,8 +537,73 @@ class NaverBlogAutomation:
         time.sleep(1.8)
 
     def _paste_body_in_naver_blog(self):
-        """본문을 네이버 블로그에 붙여넣기"""
-        pyautogui.click(*self.BODY_POS)  # 본문 위치 클릭
+        """본문을 네이버 블로그에 붙여넣기 (Selenium 기반)"""
+        driver = self.driver
+
+        # 팝업 딤 레이어 제거
+        self.close_help_panel()
+
+        # 본문 에디터 영역 찾기
+        body_el = None
+
+        # 1️⃣ contenteditable 영역 찾기
+        try:
+            candidates = driver.find_elements(
+                By.CSS_SELECTOR, ".se-component-content[contenteditable='true'], [contenteditable='true'].se-component"
+            )
+            for el in candidates:
+                if el.is_displayed():
+                    body_el = el
+                    break
+        except Exception:  # noqa: BLE001
+            pass
+
+        # 2️⃣ 본문 컨테이너 찾기
+        if not body_el:
+            try:
+                selectors = [
+                    ".se-main-container",
+                    ".se-component-content",
+                    ".se-text-paragraph",
+                    "#se-main-container"
+                ]
+                for sel in selectors:
+                    elements = driver.find_elements(By.CSS_SELECTOR, sel)
+                    for el in elements:
+                        if el.is_displayed():
+                            body_el = el
+                            break
+                    if body_el:
+                        break
+            except Exception:  # noqa: BLE001
+                pass
+
+        # 본문 영역을 찾았으면 Selenium으로 포커스 및 붙여넣기
+        if body_el:
+            try:
+                logger.info("본문 영역 찾음 - Selenium으로 붙여넣기 시도")
+                driver.execute_script("arguments[0].focus();", body_el)
+                time.sleep(0.3)
+
+                # ActionChains로 붙여넣기
+                key_cmd = Keys.COMMAND if self.is_mac else Keys.CONTROL
+                actions = ActionChains(driver)
+                actions.send_keys(Keys.ESCAPE).perform()
+                time.sleep(0.05)
+                actions.send_keys(Keys.ENTER).perform()
+                time.sleep(0.05)
+                actions.send_keys(Keys.UP).perform()
+                time.sleep(0.1)
+                actions.key_down(key_cmd).send_keys("v").key_up(key_cmd).perform()
+                time.sleep(1.8)
+                logger.info("본문 붙여넣기 완료 (Selenium)")
+                return
+            except Exception as exc:  # noqa: BLE001
+                logger.warning("Selenium 붙여넣기 실패, pyautogui로 fallback: %s", exc)
+
+        # Fallback: pyautogui 사용
+        logger.info("본문 영역 못 찾음 - pyautogui로 붙여넣기")
+        pyautogui.click(*self.BODY_POS)
         time.sleep(0.25)
         pyautogui.press("esc")
         time.sleep(0.05)
@@ -506,7 +611,7 @@ class NaverBlogAutomation:
         time.sleep(0.05)
         pyautogui.press("up")
         time.sleep(0.1)
-        self._hotkey("ctrl", "v")  # Ctrl+V 붙여넣기
+        self._hotkey("ctrl", "v")
         time.sleep(1.8)
 
     def write_post_with_html_viewer(
@@ -521,13 +626,17 @@ class NaverBlogAutomation:
             driver.get("https://blog.naver.com/GoBlogWrite.naver")
             time.sleep(3)
 
-            # 3. 제목 입력
+            # 3. 에디터 준비 및 팝업 제거 (추가)
+            if not self.prepare_editor():
+                raise RuntimeError("에디터 준비 실패: 팝업 제거 또는 제목 필드를 찾지 못했습니다.")
+
+            # 4. 제목 입력
             self._write_title(title)
 
-            # 4. 본문 붙여넣기
+            # 5. 본문 붙여넣기
             self._paste_body_in_naver_blog()
 
-            # 5. 발행 클릭 (테스트 모드인 경우 생략)
+            # 6. 발행 클릭 (테스트 모드인 경우 생략)
             if dry_run:
                 logger.info("테스트 모드 - 네이버 발행 단계 생략")
             else:

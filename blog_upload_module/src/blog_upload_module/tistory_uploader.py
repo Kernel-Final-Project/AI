@@ -4,6 +4,7 @@ Standalone Tistory uploader.
 
 from __future__ import annotations
 
+import platform
 import random
 import pyperclip
 import re
@@ -530,14 +531,39 @@ class TistoryBlogAutomation:
 
         time.sleep(0.3)
 
+        # 클립보드에 복사 및 검증
         pyperclip.copy(content)
-        time.sleep(0.2)
+        time.sleep(1.5)  # Mac 클립보드 동기화를 위해 대기 시간 증가
 
-        ActionChains(driver).key_down(Keys.CONTROL).send_keys("v").key_up(
-            Keys.CONTROL
-        ).perform()
+        # 클립보드 복사 성공 여부 확인
+        clipboard_content = pyperclip.paste()
+        if clipboard_content != content:
+            logger.warning("클립보드 복사 실패 감지, 재시도 중...")
+            time.sleep(1.0)
+            pyperclip.copy(content)
+            time.sleep(1.5)
+            clipboard_content = pyperclip.paste()
+            if clipboard_content != content:
+                logger.error("클립보드 복사 2차 재시도 실패")
+                return False
+            logger.info("클립보드 복사 재시도 성공")
+        else:
+            logger.info("클립보드 복사 성공 확인")
 
-        time.sleep(max(0.5, min(2, len(content) / 5000)))
+        # Mac에서는 Command 키, 그 외에는 Control 키 사용
+        is_mac = platform.system() == "Darwin"
+        if is_mac:
+            logger.info("Mac OS 감지 - Command+V 사용")
+            ActionChains(driver).key_down(Keys.COMMAND).send_keys("v").key_up(
+                Keys.COMMAND
+            ).perform()
+        else:
+            logger.info("Windows/Linux - Ctrl+V 사용")
+            ActionChains(driver).key_down(Keys.CONTROL).send_keys("v").key_up(
+                Keys.CONTROL
+            ).perform()
+
+        time.sleep(max(1.0, min(3, len(content) / 5000)))  # 최소 1초 대기
         return True
 
     def enter_content(self, content: str):

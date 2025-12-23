@@ -66,6 +66,7 @@ def execute_blog_upload(request: BlogUploadRequest) -> UploadResult:
             result.message = "테스트 요청으로 최종 발행을 생략했습니다."
 
     if result.posting_url:
+        
         logger.info("업로드 완료 URL: %s", result.posting_url)
     else:
         logger.info("업로드 결과 URL 없음")
