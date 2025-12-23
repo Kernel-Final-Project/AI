@@ -14,10 +14,12 @@ from urllib.parse import urljoin, urlparse
 
 from selenium import webdriver
 from selenium.common.exceptions import (
+    InvalidSessionIdException,
     NoAlertPresentException,
     NoSuchElementException,
     TimeoutException,
     UnexpectedAlertPresentException,
+    WebDriverException,
 )
 from selenium.webdriver.common.action_chains import ActionChains
 from selenium.webdriver.common.by import By
@@ -28,6 +30,15 @@ from selenium.webdriver.support.ui import WebDriverWait
 from .browser import build_chrome_driver
 from .logger import logger
 from .results import UploadResult
+
+
+_INVALID_SESSION_MESSAGE = (
+    "업로드 중 제어 브라우저 연결이 끊겼습니다. 다시 시도하거나 관리자에게 문의해주세요."
+)
+_GENERIC_BROWSER_ERROR_MESSAGE = (
+    "업로드를 진행하던 브라우저 제어에 실패했습니다. 잠시 후 다시 시도해주세요."
+)
+_UNKNOWN_ERROR_MESSAGE = "티스토리 블로그 업로드 중 알 수 없는 오류가 발생했습니다."
 
 
 class TistoryBlogAutomation:
@@ -1063,6 +1074,27 @@ class TistoryBlogAutomation:
         self.driver.quit()
 
 
+def _build_driver_failure_result(
+    *,
+    error_code: str,
+    user_message: str,
+    exc: Exception,
+) -> UploadResult:
+    exception_type = exc.__class__.__name__
+    logger.exception(
+        "티스토리 블로그 업로드 Selenium 예외 발생 (errorCode=%s, exception=%s)",
+        error_code,
+        exception_type,
+    )
+    metadata = {"errorCode": error_code, "exceptionType": exception_type}
+    return UploadResult(
+        platform="tistory",
+        success=False,
+        message=user_message,
+        metadata=metadata,
+    )
+
+
 def upload_to_tistory_blog(
     content: Dict,
     *,
@@ -1114,9 +1146,30 @@ def upload_to_tistory_blog(
             posting_url=bot.last_post_url,
         )
 
+    except InvalidSessionIdException as exc:
+        return _build_driver_failure_result(
+            error_code="UPLOAD_DRIVER_LOST",
+            user_message=_INVALID_SESSION_MESSAGE,
+            exc=exc,
+        )
+    except WebDriverException as exc:
+        return _build_driver_failure_result(
+            error_code="UPLOAD_BROWSER_ERROR",
+            user_message=_GENERIC_BROWSER_ERROR_MESSAGE,
+            exc=exc,
+        )
     except Exception as exc:  # noqa: BLE001
-        logger.error("티스토리 블로그 업로드 중 오류: %s", exc)
-        return UploadResult(platform="tistory", success=False, message=str(exc))
+        logger.exception("티스토리 블로그 업로드 중 알 수 없는 오류 발생")
+        metadata = {
+            "errorCode": "UPLOAD_UNKNOWN_ERROR",
+            "exceptionType": exc.__class__.__name__,
+        }
+        return UploadResult(
+            platform="tistory",
+            success=False,
+            message=_UNKNOWN_ERROR_MESSAGE,
+            metadata=metadata,
+        )
 
     finally:
         if bot:

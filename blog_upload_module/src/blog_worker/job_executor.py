@@ -70,5 +70,15 @@ def execute_blog_upload(request: BlogUploadRequest) -> UploadResult:
     else:
         logger.info("업로드 결과 URL 없음")
     if not result.success:
-        logger.error("업로드 실패(work_id=%s): %s", request.work_id, result.message)
+        metadata = result.metadata or {}
+        error_code = metadata.get("errorCode")
+        if error_code:
+            logger.error(
+                "업로드 실패(work_id=%s, errorCode=%s): %s",
+                request.work_id,
+                error_code,
+                result.message,
+            )
+        else:
+            logger.error("업로드 실패(work_id=%s): %s", request.work_id, result.message)
     return result
